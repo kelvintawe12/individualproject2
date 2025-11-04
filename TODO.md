@@ -1,6 +1,7 @@
-# TODO: Enhance Login and Signup Screens
-
-- [ ] Update pubspec.yaml to include ui3.png in assets
-- [ ] Modify sign_in_screen.dart: Add background image, overlay, animations (fade-in and slide-in), and app name "BookSwap"
-- [ ] Modify sign_up_screen.dart: Add background image, overlay, animations (fade-in and slide-in), and app name "BookSwap"
-- [ ] Test the UI changes by running the app
+- [ ] Remove background image and overlay from sign_in_screen.dart
+- [ ] Add animated gradient background to sign_in_screen.dart
+- [ ] Change text colors to black in sign_in_screen.dart
+- [ ] Remove background image and overlay from sign_up_screen.dart
+- [ ] Add animated gradient background to sign_up_screen.dart
+- [ ] Change text colors to black in sign_up_screen.dart
+- [ ] Keep Lottie animation in sign_up_screen.dart

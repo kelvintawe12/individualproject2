@@ -21,7 +21,7 @@ class MyListingsScreen extends StatelessWidget {
           return ListView.builder(
             padding: const EdgeInsets.all(16),
             itemCount: ownerItems.length,
-            itemBuilder: (context, i) => ListingCard(listing: ownerItems[i], isOwner: true),
+            itemBuilder: (context, i) => ListingCard(listing: ownerItems[i]),
           );
         },
       ),

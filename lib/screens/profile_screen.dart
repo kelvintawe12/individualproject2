@@ -38,6 +38,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final listingsMap = await FirebaseService.getListingsByIds(ids);
       // also load user's own listings for the grid
       final myListings = await FirebaseService.getListingsForUser(user.uid);
+      if (!mounted) return;
       setState(() {
         _listingCount = listings;
         _swapSummary = summary;
@@ -103,8 +104,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             final l = _userListings[idx];
                             return InkWell(
                               onTap: () {
-                                final isOwner = (FirebaseAuth.instance.currentUser?.uid == l['ownerId']);
-                                Navigator.of(context).push(MaterialPageRoute(builder: (_) => ListingDetailScreen(listing: l, isOwner: isOwner)));
+                                Navigator.of(context).push(MaterialPageRoute(builder: (_) => ListingDetailScreen(listing: l)));
                               },
                               child: Card(
                                 child: Row(
@@ -130,8 +130,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           final lid = h['listingId'] as String?;
                           if (lid != null && _listings.containsKey(lid)) {
                             final listing = _listings[lid]!;
-                            final isOwner = (FirebaseAuth.instance.currentUser?.uid == listing['ownerId']);
-                            Navigator.of(context).push(MaterialPageRoute(builder: (_) => ListingDetailScreen(listing: listing, isOwner: isOwner)));
+                            Navigator.of(context).push(MaterialPageRoute(builder: (_) => ListingDetailScreen(listing: listing)));
                           }
                         },
                         child: ListTile(
@@ -199,9 +198,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       default:
         color = Colors.grey;
     }
-    // Use an explicit ARGB color to avoid precision loss from withOpacity()
-    final alpha = (0.15 * 255).round();
-    final bg = Color.fromARGB(alpha, color.red, color.green, color.blue);
+  // use withAlpha to create a translucent version of the chosen color
+  final bg = color.withAlpha((0.15 * 255).round());
     return Chip(label: Text(label), backgroundColor: bg);
   }
 

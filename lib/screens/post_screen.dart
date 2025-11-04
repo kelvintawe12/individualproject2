@@ -115,9 +115,14 @@ class _PostScreenState extends State<PostScreen> with SingleTickerProviderStateM
       });
 
       // Close progress dialog
-      if (mounted) Navigator.of(context).pop();
+      if (mounted) {
+        Navigator.of(context).pop();
+      } else {
+        return;
+      }
 
       // Show success Lottie dialog
+      if (!mounted) return;
       await showDialog<void>(
         context: context,
         builder: (_) => AlertDialog(
@@ -139,8 +144,10 @@ class _PostScreenState extends State<PostScreen> with SingleTickerProviderStateM
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Posted (mock)')));
       }
     } catch (e) {
-      if (mounted) Navigator.of(context).pop();
-      _showError('Upload failed: $e');
+      if (mounted) {
+        Navigator.of(context).pop();
+        _showError('Upload failed: $e');
+      }
     }
   }
 

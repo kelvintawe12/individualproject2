@@ -19,15 +19,41 @@ class FirebaseService {
     // When platform config files are present (android/google-services.json
     // and ios/GoogleService-Info.plist), calling Firebase.initializeApp()
     // without options lets the native SDK read them automatically.
+    // We attempt to initialize using the generated DefaultFirebaseOptions.
+    // On desktop platforms where DefaultFirebaseOptions are not configured
+    // the getter throws UnsupportedError; catch that and fall back to
+    // web options so development on Windows/mac/linux works.
     try {
       // Use generated Firebase options when available so web and all
       // platforms initialize correctly. For mobile, this will also read
       // native config files if present.
       await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
       if (kDebugMode) debugPrint('Firebase initialized (with DefaultFirebaseOptions).');
+    } on UnsupportedError catch (e) {
+      // Desktop platforms may not have been configured by FlutterFire CLI.
+      if (kDebugMode) debugPrint('DefaultFirebaseOptions not configured for this platform: $e');
+      if (kDebugMode) debugPrint('Falling back to DefaultFirebaseOptions.web for initialization.');
+      await Firebase.initializeApp(options: DefaultFirebaseOptions.web);
+      if (kDebugMode) debugPrint('Firebase initialized (fallback to web options).');
     } catch (e) {
       if (kDebugMode) debugPrint('Firebase initialization failed: $e');
       rethrow;
+    }
+    // Post-initialization diagnostics helpful for debugging web/desktop issues.
+    try {
+      if (kDebugMode) {
+        debugPrint('kIsWeb = $kIsWeb');
+        debugPrint('Default target platform = $defaultTargetPlatform');
+        // List configured Firebase apps
+        final apps = Firebase.apps.map((a) => a.name).toList();
+        debugPrint('Configured Firebase apps: $apps');
+        // Print the active app options (safely)
+        final active = Firebase.app();
+        debugPrint('Active Firebase app name: ${active.name}');
+        debugPrint('Active Firebase options: apiKey=${active.options.apiKey}, projectId=${active.options.projectId}, appId=${active.options.appId}, authDomain=${active.options.authDomain}');
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('Firebase post-init diagnostic failed: $e');
     }
   }
 
@@ -216,5 +242,11 @@ class FirebaseService {
       m['id'] = d.id;
       return m;
     }).toList();
+  }
+
+  /// Update a listing document.
+  static Future<void> updateListing(String listingId, Map<String, dynamic> data) async {
+    final ref = FirebaseFirestore.instance.collection('listings').doc(listingId);
+    await ref.update(data);
   }
 }

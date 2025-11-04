@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'dart:ui' as ui;
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:lottie/lottie.dart';
 import '../../services/firebase_service.dart';
 
 class SignUpScreen extends StatefulWidget {
@@ -9,69 +11,101 @@ class SignUpScreen extends StatefulWidget {
   State<SignUpScreen> createState() => _SignUpScreenState();
 }
 
-class _SignUpScreenState extends State<SignUpScreen> with TickerProviderStateMixin {
+class _SignUpScreenState extends State<SignUpScreen>
+    with TickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final _emailCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
   bool _loading = false;
   String? _error;
+  bool _obscurePass = true;
 
-  late AnimationController _fadeController;
-  late Animation<double> _fadeAnimation;
-  late AnimationController _slideController;
-  late Animation<Offset> _slideAnimation;
+  // ── Animations ────────────────────────────────────────────────────────
+  late final AnimationController _logoCtrl;
+  late final AnimationController _tagCtrl;
+  late final AnimationController _cardCtrl;
+  late final AnimationController _btnCtrl;
+
+  late final Animation<double> _logoFade;
+  late final Animation<double> _tagFade;
+  late final Animation<Offset> _cardSlide;
+  late final Animation<double> _btnScale;
 
   @override
   void initState() {
     super.initState();
-    _fadeController = AnimationController(vsync: this, duration: const Duration(seconds: 1));
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(CurvedAnimation(parent: _fadeController, curve: Curves.easeIn));
-    _slideController = AnimationController(vsync: this, duration: const Duration(milliseconds: 800));
-    _slideAnimation = Tween<Offset>(begin: const Offset(0, 0.5), end: Offset.zero).animate(CurvedAnimation(parent: _slideController, curve: Curves.easeOut));
-    _fadeController.forward();
-    _slideController.forward();
+
+    // Logo (Lottie) – plays once
+    _logoCtrl = AnimationController(vsync: this, duration: const Duration(seconds: 2))
+      ..forward();
+
+    // Logo fade (tied to logo controller)
+    _logoFade = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(parent: _logoCtrl, curve: Curves.easeOut),
+    );
+
+    // Tagline fade‑in
+    _tagCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 800));
+    _tagFade = Tween<double>(begin: 0, end: 1).animate(
+        CurvedAnimation(parent: _tagCtrl, curve: const Interval(0.3, 1, curve: Curves.easeOut)));
+
+    // Card slide‑up + fade
+    _cardCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1000));
+    _cardSlide = Tween<Offset>(begin: const Offset(0, 0.6), end: Offset.zero).animate(
+        CurvedAnimation(parent: _cardCtrl, curve: Curves.elasticOut));
+
+    // Button press scale
+    _btnCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 150));
+    _btnScale = Tween<double>(begin: 1, end: 0.94).animate(
+        CurvedAnimation(parent: _btnCtrl, curve: Curves.easeInOut));
+
+    // Staggered start
+    Future.delayed(const Duration(milliseconds: 200), () => _tagCtrl.forward());
+    Future.delayed(const Duration(milliseconds: 400), () => _cardCtrl.forward());
   }
 
   @override
   void dispose() {
     _emailCtrl.dispose();
     _passCtrl.dispose();
-    _fadeController.dispose();
-    _slideController.dispose();
+    _logoCtrl.dispose();
+    _tagCtrl.dispose();
+    _cardCtrl.dispose();
+    _btnCtrl.dispose();
     super.dispose();
   }
 
+  // ── Sign‑up logic ─────────────────────────────────────────────────────
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+
     setState(() => _loading = true);
+    _error = null;
+
     try {
       await FirebaseService.signUp(_emailCtrl.text.trim(), _passCtrl.text);
-      // Send email verification if possible
+
+      // Email verification
       try {
         await FirebaseService.sendEmailVerification();
-        if (mounted) {
-          await showDialog<void>(
-            context: context,
-            builder: (_) => AlertDialog(
-              title: const Text('Verify your email'),
-              content: const Text('A verification email was sent. Please check your inbox and verify your email before continuing.'),
-              actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('OK'))],
-            ),
-          );
-        }
-      } catch (_) {
-        // ignore verification send errors
-      }
-      // On success, pop back to sign in
-      // create a minimal profile document so we can show names/avatars later
-      try {
-        final user = FirebaseAuth.instance.currentUser;
-        if (user != null) {
-          final display = _emailCtrl.text.split('@').first;
-          await FirebaseService.createUserProfile(user.uid, displayName: display);
-        }
+        if (!mounted) return;
+        await showDialog<void>(
+          context: context,
+          builder: (_) => const _VerificationDialog(),
+        );
       } catch (_) {}
-      if (mounted) Navigator.of(context).pop();
+
+      // Minimal profile
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        final display = _emailCtrl.text.split('@').first;
+        await FirebaseService.createUserProfile(user.uid, displayName: display);
+      }
+
+      if (!mounted) return;
+  // Success animation (show briefly) then close
+  await Future.delayed(const Duration(milliseconds: 300));
+  Navigator.of(context).pop();
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
@@ -81,104 +115,242 @@ class _SignUpScreenState extends State<SignUpScreen> with TickerProviderStateMix
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Scaffold(
-      body: Stack(
-        children: [
-          // Background Image
-          Container(
-            decoration: const BoxDecoration(
-              image: DecorationImage(
-                image: AssetImage('ui/ui3.png'),
-                fit: BoxFit.cover,
+      backgroundColor: const Color(0xFF0A0E21), // same deep navy as the screenshot
+      body: SafeArea(
+        child: Stack(
+          children: [
+            // ── Background Lottie (subtle) ───────────────────────────────
+            Positioned(
+              bottom: -80,
+              right: -80,
+              child: Opacity(
+                opacity: 0.12,
+                child: Lottie.network(
+                  'https://assets4.lottiefiles.com/packages/lf20_jcikwtux.json',
+                  width: 300,
+                  controller: _logoCtrl,
+                ),
               ),
             ),
-          ),
-          // Semi-transparent overlay for readability
-          Container(
-            color: Colors.black.withOpacity(0.3),
-          ),
-          // Content
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 420),
-                child: FadeTransition(
-                  opacity: _fadeAnimation,
-                  child: SlideTransition(
-                    position: _slideAnimation,
+
+            // ── Main column ───────────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Column(
+                children: [
+                  const Spacer(flex: 2),
+
+                  // ── Logo + Tagline ───────────────────────────────────────
+                  FadeTransition(
+                    opacity: _logoFade,
                     child: Column(
-                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        // App Name
+                        // Local asset removed / missing — use a simple icon fallback
+                        SizedBox(
+                          width: 110,
+                          height: 110,
+                          child: const Icon(Icons.book_outlined, size: 110, color: Colors.white),
+                        ),
+                        const SizedBox(height: 12),
                         const Text(
                           'BookSwap',
                           style: TextStyle(
-                            fontSize: 48,
-                            fontWeight: FontWeight.bold,
+                            fontSize: 42,
+                            fontWeight: FontWeight.w800,
                             color: Colors.white,
-                            shadows: [Shadow(blurRadius: 10, color: Colors.black)],
-                          ),
-                        ),
-                        const SizedBox(height: 40),
-                        // Form
-                        Form(
-                          key: _formKey,
-                          child: Column(
-                            children: [
-                              TextFormField(
-                                controller: _emailCtrl,
-                                decoration: InputDecoration(
-                                  labelText: 'Email',
-                                  filled: true,
-                                  fillColor: Colors.white.withOpacity(0.8),
-                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                                ),
-                                keyboardType: TextInputType.emailAddress,
-                                validator: (v) => (v == null || v.isEmpty) ? 'Enter email' : null,
-                              ),
-                              const SizedBox(height: 12),
-                              TextFormField(
-                                controller: _passCtrl,
-                                decoration: InputDecoration(
-                                  labelText: 'Password',
-                                  filled: true,
-                                  fillColor: Colors.white.withOpacity(0.8),
-                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                                ),
-                                obscureText: true,
-                                validator: (v) => (v == null || v.length < 6) ? 'Minimum 6 characters' : null,
-                              ),
-                              const SizedBox(height: 20),
-                              SizedBox(
-                                width: double.infinity,
-                                child: ElevatedButton(
-                                  onPressed: _loading ? null : _submit,
-                                  style: ElevatedButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(vertical: 16),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                  ),
-                                  child: _loading
-                                      ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                                      : const Text('Create account', style: TextStyle(fontSize: 18)),
-                                ),
-                              ),
-                              if (_error != null) ...[
-                                const SizedBox(height: 12),
-                                Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 16)),
-                              ],
-                            ],
+                            letterSpacing: 0.5,
                           ),
                         ),
                       ],
                     ),
                   ),
-                ),
+
+                  const SizedBox(height: 8),
+
+                  FadeTransition(
+                    opacity: _tagFade,
+                    child: const Text(
+                      'Swap Your Books\nWith Other Students',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 18,
+                        color: Colors.white70,
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
+
+                  const Spacer(flex: 3),
+
+                  // ── Form Card ───────────────────────────────────────────────
+                  SlideTransition(
+                    position: _cardSlide,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(28),
+                      child: BackdropFilter(
+                        filter: ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                        child: Container(
+                          padding: const EdgeInsets.fromLTRB(28, 32, 28, 28),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(isDark ? 0.09 : 0.13),
+                            borderRadius: BorderRadius.circular(28),
+                            border: Border.all(color: Colors.white12),
+                          ),
+                          child: Form(
+                            key: _formKey,
+                            child: Column(
+                              children: [
+                                // Email
+                                TextFormField(
+                                  controller: _emailCtrl,
+                                  keyboardType: TextInputType.emailAddress,
+                                  textInputAction: TextInputAction.next,
+                                  style: const TextStyle(color: Colors.white),
+                                  decoration: InputDecoration(
+                                    labelText: 'Email',
+                                    labelStyle: const TextStyle(color: Colors.white70),
+                                    filled: true,
+                                    fillColor: Colors.white.withOpacity(0.08),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(16),
+                                      borderSide: BorderSide.none,
+                                    ),
+                                    prefixIcon: const Icon(Icons.email_outlined, color: Colors.white70),
+                                  ),
+                                  validator: (v) => v?.isEmpty ?? true ? 'Enter your email' : null,
+                                ),
+                                const SizedBox(height: 16),
+
+                                // Password
+                                TextFormField(
+                                  controller: _passCtrl,
+                                  obscureText: _obscurePass,
+                                  style: const TextStyle(color: Colors.white),
+                                  decoration: InputDecoration(
+                                    labelText: 'Password',
+                                    labelStyle: const TextStyle(color: Colors.white70),
+                                    filled: true,
+                                    fillColor: Colors.white.withOpacity(0.08),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(16),
+                                      borderSide: BorderSide.none,
+                                    ),
+                                    prefixIcon: const Icon(Icons.lock_outline, color: Colors.white70),
+                                    suffixIcon: IconButton(
+                                      icon: Icon(
+                                        _obscurePass ? Icons.visibility_off : Icons.visibility,
+                                        color: Colors.white70,
+                                      ),
+                                      onPressed: () => setState(() => _obscurePass = !_obscurePass),
+                                    ),
+                                  ),
+                                  validator: (v) =>
+                                      (v?.length ?? 0) < 6 ? 'Min 6 characters' : null,
+                                ),
+                                const SizedBox(height: 24),
+
+                                // Submit button
+                                ScaleTransition(
+                                  scale: _btnScale,
+                                  child: SizedBox(
+                                    width: double.infinity,
+                                    height: 56,
+                                    child: ElevatedButton(
+                                      onPressed: _loading
+                                          ? null
+                                          : () {
+                                              _btnCtrl.forward().then((_) => _btnCtrl.reverse());
+                                              _submit();
+                                            },
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: const Color(0xFFFED428), // exact yellow
+                                        foregroundColor: Colors.black87,
+                                        elevation: 0,
+                                        shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(16)),
+                                      ),
+                                      child: _loading
+                                          ? const SizedBox(
+                                              height: 24,
+                                              width: 24,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2.5,
+                                                color: Colors.black54,
+                                              ),
+                                            )
+                                          : const Text(
+                                              'Create account',
+                                              style: TextStyle(
+                                                fontSize: 18,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                    ),
+                                  ),
+                                ),
+
+                                if (_error != null) ...[
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    _error!,
+                                    style: const TextStyle(color: Colors.redAccent),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  const Spacer(flex: 2),
+
+                  // ── Bottom “Sign In” link (same style as screenshot) ───────
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text(
+                      'Sign In',
+                      style: TextStyle(
+                        color: Color(0xFFFED428),
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
+    );
+  }
+}
+
+// ── Verification dialog (re‑usable) ─────────────────────────────────────
+class _VerificationDialog extends StatelessWidget {
+  const _VerificationDialog({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: const Text('Verify your email'),
+      content: const Text(
+          'A verification email was sent. Please check your inbox and verify before continuing.'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('OK', style: TextStyle(color: Color(0xFFFED428))),
+        ),
+      ],
     );
   }
 }

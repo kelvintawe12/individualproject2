@@ -2,10 +2,9 @@ import 'package:flutter/material.dart';
 import '../screens/listing_detail_screen.dart';
 
 class ListingCard extends StatefulWidget {
-  ListingCard({Key? key, this.isOwner = false, this.listing}) : super(key: key);
+  const ListingCard({Key? key, this.listing}) : super(key: key);
 
   final Map<String, dynamic>? listing;
-  final bool isOwner;
 
   @override
   State<ListingCard> createState() => _ListingCardState();
@@ -33,7 +32,7 @@ class _ListingCardState extends State<ListingCard> {
       onTapCancel: () => setState(() => _scale = 1.0),
       onTapUp: (details) => _onTapUp(details),
         onTap: () {
-        Navigator.of(context).push(MaterialPageRoute(builder: (_) => ListingDetailScreen(listing: widget.listing, heroTag: tag, isOwner: widget.isOwner)));
+        Navigator.of(context).push(MaterialPageRoute(builder: (_) => ListingDetailScreen(listing: widget.listing, heroTag: tag)));
       },
       child: AnimatedScale(
         scale: _scale,

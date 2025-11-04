@@ -3,13 +3,13 @@ import 'package:lottie/lottie.dart';
 import '../services/firebase_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'edit_listing_screen.dart';
 
 class ListingDetailScreen extends StatefulWidget {
   final Map<String, dynamic>? listing;
   final String heroTag;
-  final bool isOwner;
 
-  const ListingDetailScreen({Key? key, this.listing, this.heroTag = 'coverHero', this.isOwner = false}) : super(key: key);
+  const ListingDetailScreen({Key? key, this.listing, this.heroTag = 'coverHero'}) : super(key: key);
 
   @override
   State<ListingDetailScreen> createState() => _ListingDetailScreenState();
@@ -45,13 +45,28 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    final isOwner = user != null && widget.listing != null && widget.listing!['ownerId'] == user.uid;
+    final hasRequestedSwap = false; // TODO: Check if user already requested swap for this listing
+
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.listing?['title'] ?? 'Listing'),
         backgroundColor: const Color(0xFF0F1724),
         leading: const BackButton(),
         actions: [
-          if (widget.isOwner)
+          if (isOwner)
+            PopupMenuButton<String>(
+              onSelected: (value) {
+                if (value == 'edit') {
+                  Navigator.of(context).push(MaterialPageRoute(builder: (_) => EditListingScreen(listing: widget.listing!)));
+                }
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(value: 'edit', child: Text('Edit Listing')),
+              ],
+            ),
+          if (isOwner)
             StreamBuilder<List<Map<String, dynamic>>>(
               stream: (widget.listing != null && widget.listing!['id'] != null)
                   ? FirebaseService.listenSwapsForListing(widget.listing!['id'])
@@ -76,10 +91,12 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
                     );
                     if (accept == true) {
                       await FirebaseService.acceptSwap(swapId);
+                      if (!mounted) return;
                       setState(() {
                         _isAccepted = true;
                         _isPending = false;
                       });
+                      if (!mounted) return;
                       await showDialog<void>(
                         context: context,
                         builder: (_) => AlertDialog(
@@ -167,7 +184,7 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
                                       : const CircleAvatar(child: Icon(Icons.person)),
                                   title: Text('$requesterName'),
                                   subtitle: Text('${_humanStatus(status)} • ${_formatTime(createdAt)}'),
-                                  trailing: widget.isOwner
+                                  trailing: isOwner
                                       ? ElevatedButton(
                                           onPressed: isPending
                                               ? () async {
@@ -219,10 +236,11 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
                             ],
                           ),
                         );
-                        if (cancel == true) {
-                          setState(() => _isPending = false);
-                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Offer cancelled (mock)')));
-                        }
+                                                  if (cancel == true) {
+                                                  setState(() => _isPending = false);
+                                                  if (!mounted) return;
+                                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Offer cancelled (mock)')));
+                                                }
                       },
                       style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[600], padding: const EdgeInsets.symmetric(vertical: 16)),
                       child: const Text('Pending — Cancel'))
@@ -254,6 +272,7 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
                                   }
 
                                   // show Lottie success dialog
+                                  if (!mounted) return;
                                   await showDialog<void>(
                                     context: context,
                                     builder: (_) => AlertDialog(
