@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:ui' as ui;
+import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:lottie/lottie.dart';
 import '../../services/firebase_service.dart';
@@ -75,6 +76,23 @@ class _SignUpScreenState extends State<SignUpScreen>
     super.dispose();
   }
 
+  // Show a dialog with the raw FirebaseAuthException details to aid debugging.
+  void _showRawFirebaseErrorDialog(FirebaseAuthException e) {
+    if (!mounted) return;
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Firebase error: ${e.code}'),
+        content: SingleChildScrollView(
+          child: SelectableText(e.message ?? e.toString()),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('OK')),
+        ],
+      ),
+    );
+  }
+
   // ── Sign‑up logic ─────────────────────────────────────────────────────
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
@@ -106,6 +124,13 @@ class _SignUpScreenState extends State<SignUpScreen>
   // Success animation (show briefly) then close
   await Future.delayed(const Duration(milliseconds: 300));
   Navigator.of(context).pop();
+    } on FirebaseAuthException catch (e, st) {
+      if (kDebugMode) {
+        debugPrint('FirebaseAuthException during sign-up: code=${e.code}, message=${e.message}');
+        debugPrintStack(stackTrace: st);
+      }
+      _showRawFirebaseErrorDialog(e);
+      setState(() => _error = e.message ?? e.code);
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
@@ -140,8 +165,13 @@ class _SignUpScreenState extends State<SignUpScreen>
             // ── Main column ───────────────────────────────────────────────
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Column(
-                children: [
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: MediaQuery.of(context).size.height),
+                  child: IntrinsicHeight(
+                    child: Column(
+                      children: [
                   const Spacer(flex: 2),
 
                   // ── Logo + Tagline ───────────────────────────────────────
@@ -324,8 +354,11 @@ class _SignUpScreenState extends State<SignUpScreen>
                     ),
                   ),
                   const SizedBox(height: 16),
-                ],
-              ),
+                      ],
+                    ), // Column
+                  ), // IntrinsicHeight
+                ), // ConstrainedBox
+              ), // SingleChildScrollView
             ),
           ],
         ),

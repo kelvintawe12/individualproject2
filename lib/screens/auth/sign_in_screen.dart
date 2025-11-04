@@ -72,6 +72,23 @@ class _SignInScreenState extends State<SignInScreen> with TickerProviderStateMix
     super.dispose();
   }
 
+  // Show a dialog with the raw FirebaseAuthException details to aid debugging.
+  void _showRawFirebaseErrorDialog(FirebaseAuthException e) {
+    if (!mounted) return;
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Firebase error: ${e.code}'),
+        content: SingleChildScrollView(
+          child: SelectableText(e.message ?? e.toString()),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('OK')),
+        ],
+      ),
+    );
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -81,9 +98,13 @@ class _SignInScreenState extends State<SignInScreen> with TickerProviderStateMix
     try {
       await FirebaseService.signIn(_emailCtrl.text.trim(), _passCtrl.text);
       // Success: let auth state listener handle navigation
-    } on FirebaseAuthException catch (e) {
+    } on FirebaseAuthException catch (e, st) {
       final msg = e.message ?? e.code;
-      if (kDebugMode) debugPrint('Sign-in error: ${e.code}');
+      if (kDebugMode) {
+        debugPrint('Sign-in FirebaseAuthException: code=${e.code}, message=${e.message}');
+        debugPrintStack(stackTrace: st);
+      }
+      _showRawFirebaseErrorDialog(e);
       setState(() => _error = msg);
     } catch (e) {
       setState(() => _error = e.toString());
@@ -143,8 +164,13 @@ class _SignInScreenState extends State<SignInScreen> with TickerProviderStateMix
 
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Column(
-                children: [
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: MediaQuery.of(context).size.height),
+                  child: IntrinsicHeight(
+                    child: Column(
+                      children: [
                   const Spacer(flex: 2),
 
                   // Logo + Title
@@ -337,8 +363,11 @@ class _SignInScreenState extends State<SignInScreen> with TickerProviderStateMix
                   ),
 
                   const Spacer(flex: 2),
-                ],
-              ),
+                      ],
+                    ), // Column
+                  ), // IntrinsicHeight
+                ), // ConstrainedBox
+              ), // SingleChildScrollView
             ),
           ],
         ),
