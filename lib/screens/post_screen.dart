@@ -182,18 +182,36 @@ class _PostScreenState extends State<PostScreen> with TickerProviderStateMixin {
                               spacing: 8,
                               children: ['New', 'Like New', 'Good', 'Used'].map((c) {
                                 final selected = c == _condition;
-                                return ChoiceChip(
-                                  label: Text(c),
-                                  selected: selected,
-                                  selectedColor: const Color(0xFFF0B429),
-                                  backgroundColor: selected ? const Color(0xFFF0B429) : Colors.white.withOpacity(0.04),
-                                  labelStyle: TextStyle(color: selected ? Colors.black87 : Colors.white70, fontWeight: FontWeight.w600),
-                                  shape: RoundedRectangleBorder(
+                                return Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
                                     borderRadius: BorderRadius.circular(12),
-                                    side: BorderSide(color: selected ? Colors.transparent : Colors.white24),
+                                    onTap: () => setState(() => _condition = c),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                      decoration: BoxDecoration(
+                                        color: selected ? const Color(0xFFF0B429) : const Color(0xFF0B1220).withOpacity(0.6),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(color: selected ? Colors.transparent : Colors.white38, width: 1),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          if (selected) ...[
+                                            const Icon(Icons.check, size: 16, color: Colors.black87),
+                                            const SizedBox(width: 8),
+                                          ],
+                                          Text(
+                                            c,
+                                            style: TextStyle(
+                                              color: selected ? Colors.black87 : Colors.white,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
                                   ),
-                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                                  onSelected: (_) => setState(() => _condition = c),
                                 );
                               }).toList(),
                             ),
