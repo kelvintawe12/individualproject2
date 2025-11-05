@@ -171,167 +171,181 @@ class _SignInScreenState extends State<SignInScreen>
                   ),
                 ),
 
-                // Main column
+                // Main column (now scrollable and constrained to avoid overflow when keyboard appears)
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: Column(
-                    children: [
-                      const Spacer(flex: 2),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      return SingleChildScrollView(
+                        physics: const BouncingScrollPhysics(),
+                        padding: const EdgeInsets.only(top: 8, bottom: 8),
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                          child: IntrinsicHeight(
+                            child: Column(
+                              children: [
+                                const Spacer(flex: 2),
 
-                      // ── Logo + Tagline ───────────────────────
-                      FadeTransition(
-                        opacity: _logoFade,
-                        child: Column(
-                          children: [
-                            // **YOUR bookOpen.png**
-                            Image.asset('assets/bookOpen.png', width: 110),
-                            const SizedBox(height: 12),
-                            const Text(
-                              'BookSwap',
-                              style: TextStyle(
-                                fontSize: 42,
-                                fontWeight: FontWeight.w800,
-                                color: Colors.white,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      const SizedBox(height: 8),
-
-                      FadeTransition(
-                        opacity: _tagFade,
-                        child: const Text(
-                          'Swap Your Books\nWith Other Students',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 18,
-                            color: Colors.white70,
-                            height: 1.4,
-                          ),
-                        ),
-                      ),
-
-                      const Spacer(flex: 3),
-
-                      // ── Form Card ─────────────────────────────
-                      SlideTransition(
-                        position: _cardSlide,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(28),
-                          child: BackdropFilter(
-                            filter: ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                            child: Container(
-                              padding: const EdgeInsets.fromLTRB(28, 32, 28, 28),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.09),
-                                borderRadius: BorderRadius.circular(28),
-                                border: Border.all(color: Colors.white12),
-                              ),
-                              child: Form(
-                                key: _formKey,
-                                child: Column(
-                                  children: [
-                                    // Email
-                                    TextFormField(
-                                      controller: _emailCtrl,
-                                      keyboardType: TextInputType.emailAddress,
-                                      style: const TextStyle(color: Colors.white),
-                                      decoration: _glassInput('Email', Icons.email_outlined),
-                                      validator: (v) => v?.isEmpty ?? true ? 'Required' : null,
-                                    ),
-                                    const SizedBox(height: 16),
-
-                                    // Password
-                                    TextFormField(
-                                      controller: _passCtrl,
-                                      obscureText: _obscurePass,
-                                      style: const TextStyle(color: Colors.white),
-                                      decoration: _glassInput('Password', Icons.lock_outline).copyWith(
-                                        suffixIcon: IconButton(
-                                          icon: Icon(
-                                            _obscurePass ? Icons.visibility_off : Icons.visibility,
-                                            color: Colors.white70,
-                                          ),
-                                          onPressed: () => setState(() => _obscurePass = !_obscurePass),
-                                        ),
-                                      ),
-                                      validator: (v) => (v?.length ?? 0) < 6 ? 'Min 6 chars' : null,
-                                    ),
-                                    const SizedBox(height: 24),
-
-                                    // Sign‑In Button
-                                    ScaleTransition(
-                                      scale: _btnScale,
-                                      child: SizedBox(
-                                        width: double.infinity,
-                                        height: 56,
-                                        child: ElevatedButton(
-                                          onPressed: _loading
-                                              ? null
-                                              : () {
-                                                  _btnCtrl.forward().then((_) => _btnCtrl.reverse());
-                                                  _submit();
-                                                },
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor: const Color(0xFFFED428),
-                                            foregroundColor: Colors.black87,
-                                            shape: RoundedRectangleBorder(
-                                                borderRadius: BorderRadius.circular(16)),
-                                          ),
-                                          child: _loading
-                                              ? const SizedBox(
-                                                  height: 24,
-                                                  width: 24,
-                                                  child: CircularProgressIndicator(
-                                                    strokeWidth: 2.5,
-                                                    color: Colors.black54,
-                                                  ),
-                                                )
-                                              : const Text('Sign In',
-                                                  style: TextStyle(
-                                                      fontSize: 18, fontWeight: FontWeight.w600)),
-                                        ),
-                                      ),
-                                    ),
-
-                                    if (_error != null) ...[
+                                // ── Logo + Tagline ───────────────────────
+                                FadeTransition(
+                                  opacity: _logoFade,
+                                  child: Column(
+                                    children: [
+                                      // **YOUR bookOpen.png**
+                                      Image.asset('assets/bookOpen.png', width: 110),
                                       const SizedBox(height: 12),
-                                      Text(_error!, style: const TextStyle(color: Colors.redAccent)),
+                                      const Text(
+                                        'BookSwap',
+                                        style: TextStyle(
+                                          fontSize: 42,
+                                          fontWeight: FontWeight.w800,
+                                          color: Colors.white,
+                                          letterSpacing: 0.5,
+                                        ),
+                                      ),
                                     ],
-
-                                    const SizedBox(height: 16),
-
-                                    // Links
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        TextButton(
-                                          onPressed: () => Navigator.of(context).push(
-                                            MaterialPageRoute(builder: (_) => const SignUpScreen()),
-                                          ),
-                                          child: const Text('Create an account',
-                                              style: TextStyle(color: Color(0xFFFED428))),
-                                        ),
-                                        TextButton(
-                                          onPressed: _loading ? null : _forgotPassword,
-                                          child: const Text('Forgot password?',
-                                              style: TextStyle(color: Color(0xFFFED428))),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
+                                  ),
                                 ),
-                              ),
+
+                                const SizedBox(height: 8),
+
+                                FadeTransition(
+                                  opacity: _tagFade,
+                                  child: const Text(
+                                    'Swap Your Books\nWith Other Students',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      color: Colors.white70,
+                                      height: 1.4,
+                                    ),
+                                  ),
+                                ),
+
+                                const Spacer(flex: 3),
+
+                                // ── Form Card ─────────────────────────────
+                                SlideTransition(
+                                  position: _cardSlide,
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(28),
+                                    child: BackdropFilter(
+                                      filter: ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                                      child: Container(
+                                        padding: const EdgeInsets.fromLTRB(28, 32, 28, 28),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withOpacity(0.09),
+                                          borderRadius: BorderRadius.circular(28),
+                                          border: Border.all(color: Colors.white12),
+                                        ),
+                                        child: Form(
+                                          key: _formKey,
+                                          child: Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              // Email
+                                              TextFormField(
+                                                controller: _emailCtrl,
+                                                keyboardType: TextInputType.emailAddress,
+                                                style: const TextStyle(color: Colors.white),
+                                                decoration: _glassInput('Email', Icons.email_outlined),
+                                                validator: (v) => v?.isEmpty ?? true ? 'Required' : null,
+                                              ),
+                                              const SizedBox(height: 16),
+
+                                              // Password
+                                              TextFormField(
+                                                controller: _passCtrl,
+                                                obscureText: _obscurePass,
+                                                style: const TextStyle(color: Colors.white),
+                                                decoration: _glassInput('Password', Icons.lock_outline).copyWith(
+                                                  suffixIcon: IconButton(
+                                                    icon: Icon(
+                                                      _obscurePass ? Icons.visibility_off : Icons.visibility,
+                                                      color: Colors.white70,
+                                                    ),
+                                                    onPressed: () => setState(() => _obscurePass = !_obscurePass),
+                                                  ),
+                                                ),
+                                                validator: (v) => (v?.length ?? 0) < 6 ? 'Min 6 chars' : null,
+                                              ),
+                                              const SizedBox(height: 24),
+
+                                              // Sign‑In Button
+                                              ScaleTransition(
+                                                scale: _btnScale,
+                                                child: SizedBox(
+                                                  width: double.infinity,
+                                                  height: 56,
+                                                  child: ElevatedButton(
+                                                    onPressed: _loading
+                                                        ? null
+                                                        : () {
+                                                            _btnCtrl.forward().then((_) => _btnCtrl.reverse());
+                                                            _submit();
+                                                          },
+                                                    style: ElevatedButton.styleFrom(
+                                                      backgroundColor: const Color(0xFFFED428),
+                                                      foregroundColor: Colors.black87,
+                                                      shape: RoundedRectangleBorder(
+                                                          borderRadius: BorderRadius.circular(16)),
+                                                    ),
+                                                    child: _loading
+                                                        ? const SizedBox(
+                                                            height: 24,
+                                                            width: 24,
+                                                            child: CircularProgressIndicator(
+                                                              strokeWidth: 2.5,
+                                                              color: Colors.black54,
+                                                            ),
+                                                          )
+                                                        : const Text('Sign In',
+                                                            style: TextStyle(
+                                                                fontSize: 18, fontWeight: FontWeight.w600)),
+                                                  ),
+                                                ),
+                                              ),
+
+                                              if (_error != null) ...[
+                                                const SizedBox(height: 12),
+                                                Text(_error!, style: const TextStyle(color: Colors.redAccent)),
+                                              ],
+
+                                              const SizedBox(height: 16),
+
+                                              // Links
+                                              Row(
+                                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                children: [
+                                                  TextButton(
+                                                    onPressed: () => Navigator.of(context).push(
+                                                      MaterialPageRoute(builder: (_) => const SignUpScreen()),
+                                                    ),
+                                                    child: const Text('Create an account',
+                                                        style: TextStyle(color: Color(0xFFFED428))),
+                                                  ),
+                                                  TextButton(
+                                                    onPressed: _loading ? null : _forgotPassword,
+                                                    child: const Text('Forgot password?',
+                                                        style: TextStyle(color: Color(0xFFFED428))),
+                                                  ),
+                                                ],
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+
+                                const Spacer(flex: 2),
+                              ],
                             ),
                           ),
                         ),
-                      ),
-
-                      const Spacer(flex: 2),
-                    ],
+                      );
+                    },
                   ),
                 ),
               ],

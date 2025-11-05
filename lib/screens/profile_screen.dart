@@ -1,9 +1,6 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:lottie/lottie.dart';
 import 'dart:ui' as ui;
 import '../services/firebase_service.dart';
 import 'listing_detail_screen.dart';
@@ -69,8 +66,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
 
   @override
   Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
-    final theme = Theme.of(context);
+  final user = FirebaseAuth.instance.currentUser;
 
     return Scaffold(
       backgroundColor: const Color(0xFF0F1724),
@@ -298,8 +294,21 @@ class _AnimatedListingThumb extends StatelessWidget {
             borderRadius: BorderRadius.circular(16),
             child: Stack(
               children: [
-                (listing['imageUrl'] != null)
-                    ? Image.network(listing['imageUrl'], fit: BoxFit.cover, width: double.infinity, height: double.infinity)
+                (listing['imageUrl'] != null && (listing['imageUrl'] as String).isNotEmpty)
+                    ? Image.network(
+                        listing['imageUrl'],
+                        fit: BoxFit.cover,
+                        width: double.infinity,
+                        height: double.infinity,
+                        errorBuilder: (ctx, err, stack) => Image.asset('assets/bookOpen.png', fit: BoxFit.cover),
+                        loadingBuilder: (ctx, child, progress) {
+                          if (progress == null) return child;
+                          return Container(
+                            color: Colors.black12,
+                            child: const Center(child: CircularProgressIndicator()),
+                          );
+                        },
+                      )
                     : Image.asset('assets/bookOpen.png', fit: BoxFit.cover),
                 Positioned(
                   bottom: 0,
@@ -367,7 +376,13 @@ class _ActivityItem extends StatelessWidget {
     return ClipRRect(
       borderRadius: BorderRadius.circular(8),
       child: url != null && url.isNotEmpty
-          ? Image.network(url, width: 50, height: 50, fit: BoxFit.cover)
+          ? Image.network(
+              url,
+              width: 50,
+              height: 50,
+              fit: BoxFit.cover,
+              errorBuilder: (ctx, err, stack) => Image.asset('assets/bookOpen.png', width: 50, height: 50, fit: BoxFit.cover),
+            )
           : Image.asset('assets/bookOpen.png', width: 50, height: 50, fit: BoxFit.cover),
     );
   }
@@ -426,8 +441,15 @@ class _EmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Image.asset(lottie, width: 120, height: 120),
+          Image.asset(
+            lottie,
+            width: 120,
+            height: 120,
+            errorBuilder: (ctx, err, stack) => const SizedBox(width: 120, height: 120),
+            fit: BoxFit.contain,
+          ),
           const SizedBox(height: 16),
           Text(message, style: const TextStyle(color: Colors.white70)),
         ],
