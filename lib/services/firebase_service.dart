@@ -64,6 +64,24 @@ class FirebaseService {
     } catch (e) {
       if (kDebugMode) debugPrint('Firebase post-init diagnostic failed: $e');
     }
+
+    // DEBUG helper: if running locally in debug and there's no signed-in user,
+    // attempt an anonymous sign-in so Firestore listen/write streams don't fail
+    // due to unauthenticated requests while developing on web/desktop.
+    // This is safe for local development only and will be skipped in release.
+    try {
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (kDebugMode && currentUser == null) {
+        try {
+          await FirebaseAuth.instance.signInAnonymously();
+          if (kDebugMode) debugPrint('FirebaseService: signed in anonymously for debug/dev.');
+        } catch (e) {
+          if (kDebugMode) debugPrint('FirebaseService: anonymous sign-in failed (may be disabled in Console): $e');
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('FirebaseService: debug anonymous sign-in check failed: $e');
+    }
   }
 
   /// Sign up with email/password. Return user id or throw.
@@ -278,10 +296,135 @@ class FirebaseService {
     await ref.delete();
   }
 
+  /// Get a single listing by id. Returns null if not found.
+  static Future<Map<String, dynamic>?> getListingById(String listingId) async {
+    try {
+      final ref = FirebaseFirestore.instance.collection('listings').doc(listingId);
+      final snap = await ref.get();
+      if (!snap.exists) return null;
+      final m = Map<String, dynamic>.from(snap.data()!);
+      m['id'] = snap.id;
+      return m;
+    } catch (e) {
+      if (kDebugMode) debugPrint('[FirebaseService] getListingById error: $e');
+      rethrow;
+    }
+  }
+
+  /// Get a single user profile by uid. Returns null if not found.
+  static Future<Map<String, dynamic>?> getUserById(String uid) async {
+    try {
+      final ref = FirebaseFirestore.instance.collection('users').doc(uid);
+      final snap = await ref.get();
+      if (!snap.exists) return null;
+      final m = Map<String, dynamic>.from(snap.data()!);
+      m['id'] = snap.id;
+      return m;
+    } catch (e) {
+      if (kDebugMode) debugPrint('[FirebaseService] getUserById error: $e');
+      rethrow;
+    }
+  }
+
+  /// Update a user profile (merge). Useful for editing displayName/avatar and other fields.
+  static Future<void> updateUserProfile(String uid, Map<String, dynamic> data) async {
+    try {
+      final ref = FirebaseFirestore.instance.collection('users').doc(uid);
+      await ref.set(data, SetOptions(merge: true));
+    } catch (e) {
+      if (kDebugMode) debugPrint('[FirebaseService] updateUserProfile error: $e');
+      rethrow;
+    }
+  }
+
   /// Listen to listings for a specific user (ownerId == uid).
   static Stream<List<Map<String, dynamic>>> listenUserListings(String uid) {
     final col = FirebaseFirestore.instance.collection('listings').where('ownerId', isEqualTo: uid).orderBy('createdAt', descending: true);
     return _queryToListStream(col);
+  }
+
+  /// Create a chat document with an explicit participants list. Returns the created chat id.
+  /// Use this when you need a non-deterministic chat id (group chat etc.).
+  static Future<String> createChatWithParticipants(List<String> participants, {String? chatId, Map<String, dynamic>? metadata}) async {
+    if (participants.isEmpty) throw ArgumentError('participants must not be empty');
+    try {
+      final col = FirebaseFirestore.instance.collection('chats');
+      if (chatId != null && chatId.isNotEmpty) {
+        final ref = col.doc(chatId);
+        final payload = <String, dynamic>{
+          'participants': participants,
+          'lastMessage': '',
+          'lastSentAt': FieldValue.serverTimestamp(),
+        };
+        if (metadata != null) payload.addAll(metadata);
+        await ref.set(payload, SetOptions(merge: true));
+        return ref.id;
+      } else {
+        final docRef = await col.add({
+          'participants': participants,
+          'lastMessage': '',
+          'lastSentAt': FieldValue.serverTimestamp(),
+          if (metadata != null) ...metadata,
+        });
+        return docRef.id;
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('[FirebaseService] createChatWithParticipants error: $e');
+      rethrow;
+    }
+  }
+
+  /// Delete a chat and its messages subcollection in batches.
+  /// Use with caution (destructive). This method paginates deletes to avoid
+  /// exceeding batch limits.
+  static Future<void> deleteChat(String chatId) async {
+    final firestore = FirebaseFirestore.instance;
+    final chatRef = firestore.collection('chats').doc(chatId);
+    try {
+      // Delete messages in batches of up to 500
+      const batchSize = 500;
+      while (true) {
+        final msgs = await chatRef.collection('messages').limit(batchSize).get();
+        if (msgs.docs.isEmpty) break;
+        final batch = firestore.batch();
+        for (final d in msgs.docs) {
+          batch.delete(d.reference);
+        }
+        await batch.commit();
+        if (msgs.docs.length < batchSize) break;
+      }
+      // Delete the chat doc itself
+      await chatRef.delete();
+    } catch (e) {
+      if (kDebugMode) debugPrint('[FirebaseService] deleteChat error: $e');
+      rethrow;
+    }
+  }
+
+  /// Get a swap by id. Returns null if not found.
+  static Future<Map<String, dynamic>?> getSwapById(String swapId) async {
+    try {
+      final ref = FirebaseFirestore.instance.collection('swaps').doc(swapId);
+      final snap = await ref.get();
+      if (!snap.exists) return null;
+      final m = Map<String, dynamic>.from(snap.data()!);
+      m['id'] = snap.id;
+      return m;
+    } catch (e) {
+      if (kDebugMode) debugPrint('[FirebaseService] getSwapById error: $e');
+      rethrow;
+    }
+  }
+
+  /// Delete a swap by id.
+  static Future<void> deleteSwap(String swapId) async {
+    try {
+      final ref = FirebaseFirestore.instance.collection('swaps').doc(swapId);
+      await ref.delete();
+    } catch (e) {
+      if (kDebugMode) debugPrint('[FirebaseService] deleteSwap error: $e');
+      rethrow;
+    }
   }
 
   // ----------------- Chat / Messaging -----------------
