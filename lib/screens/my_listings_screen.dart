@@ -339,10 +339,12 @@ class _GlassListingCard extends StatelessWidget {
                   ),
                 ),
 
-                // Edit
+                // Edit (use compact padding and constraints to avoid tiny overflows)
                 IconButton(
                   icon: const Icon(Icons.edit_outlined, color: Colors.white70),
                   onPressed: onEdit,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
                 ),
               ],
             ),

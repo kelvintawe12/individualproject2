@@ -144,92 +144,115 @@ class _PostScreenState extends State<PostScreen> with TickerProviderStateMixin {
             padding: const EdgeInsets.all(16),
             child: Form(
               key: _formKey,
-              child: Column(
-                children: [
-                  // Preview Card
-                  if (_titleCtrl.text.isNotEmpty || _imageFile != null)
-                    _BookPreviewCard(
-                      title: _titleCtrl.text,
-                      author: _authorCtrl.text,
-                      condition: _condition,
-                      swapFor: _swapForCtrl.text,
-                      imageFile: _imageFile,
-                    ),
-                  const SizedBox(height: 16),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+                  return SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    padding: EdgeInsets.only(bottom: bottomInset + 100, top: 8),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(minHeight: constraints.maxHeight - 16),
+                      child: IntrinsicHeight(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            // Preview Card
+                            if (_titleCtrl.text.isNotEmpty || _imageFile != null)
+                              _BookPreviewCard(
+                                title: _titleCtrl.text,
+                                author: _authorCtrl.text,
+                                condition: _condition,
+                                swapFor: _swapForCtrl.text,
+                                imageFile: _imageFile,
+                              ),
+                            const SizedBox(height: 16),
 
-                  // Form Fields
-                  _GlassTextField(controller: _titleCtrl, label: 'Book Title', icon: Icons.book),
-                  const SizedBox(height: 12),
-                  _GlassTextField(controller: _authorCtrl, label: 'Author', icon: Icons.person),
-                  const SizedBox(height: 12),
-                  _GlassTextField(controller: _swapForCtrl, label: 'Swap-For (optional)', icon: Icons.swap_horiz),
-                  const SizedBox(height: 16),
+                            // Form Fields
+                            _GlassTextField(controller: _titleCtrl, label: 'Book Title', icon: Icons.book),
+                            const SizedBox(height: 12),
+                            _GlassTextField(controller: _authorCtrl, label: 'Author', icon: Icons.person),
+                            const SizedBox(height: 12),
+                            _GlassTextField(controller: _swapForCtrl, label: 'Swap-For (optional)', icon: Icons.swap_horiz),
+                            const SizedBox(height: 16),
 
-                  // Condition Chips
-                  const Text('Condition', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    children: ['New', 'Like New', 'Good', 'Used'].map((c) {
-                      final selected = c == _condition;
-                      return ChoiceChip(
-                        label: Text(c),
-                        selected: selected,
-                        selectedColor: const Color(0xFFF0B429),
-                        backgroundColor: Colors.white.withOpacity(0.1),
-                        labelStyle: TextStyle(color: selected ? Colors.black87 : Colors.white),
-                        onSelected: (_) => setState(() => _condition = c),
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 16),
+                            // Condition Chips
+                            const Text('Condition', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 8,
+                              children: ['New', 'Like New', 'Good', 'Used'].map((c) {
+                                final selected = c == _condition;
+                                return ChoiceChip(
+                                  label: Text(c),
+                                  selected: selected,
+                                  selectedColor: const Color(0xFFF0B429),
+                                  backgroundColor: selected ? const Color(0xFFF0B429) : Colors.white.withOpacity(0.04),
+                                  labelStyle: TextStyle(color: selected ? Colors.black87 : Colors.white70, fontWeight: FontWeight.w600),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    side: BorderSide(color: selected ? Colors.transparent : Colors.white24),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                  onSelected: (_) => setState(() => _condition = c),
+                                );
+                              }).toList(),
+                            ),
+                            const SizedBox(height: 16),
 
-                  // Image Picker
-                  Row(
-                    children: [
-                      ElevatedButton.icon(
-                        onPressed: _pickImage,
-                        icon: const Icon(Icons.photo_library, color: Colors.white),
-                        label: const Text('Add Photo'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.white.withOpacity(0.15),
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 300),
-                          child: _imageFile == null
-                              ? const Text('No photo selected', style: TextStyle(color: Colors.white60))
-                              : ClipRRect(
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: Image.file(_imageFile!, height: 80, fit: BoxFit.cover),
+                            // Image Picker
+                            Row(
+                              children: [
+                                ElevatedButton.icon(
+                                  onPressed: _pickImage,
+                                  icon: const Icon(Icons.photo_library, color: Colors.white),
+                                  label: const Text('Add Photo'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.white.withOpacity(0.15),
+                                    foregroundColor: Colors.white,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                  ),
                                 ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: AnimatedSwitcher(
+                                    duration: const Duration(milliseconds: 300),
+                                    child: _imageFile == null
+                                        ? const Text('No photo selected', style: TextStyle(color: Colors.white60))
+                                        : ClipRRect(
+                                            borderRadius: BorderRadius.circular(12),
+                                            child: Image.file(_imageFile!, height: 80, fit: BoxFit.cover, errorBuilder: (ctx, err, st) => Container(width: 80, height: 80, color: Colors.grey[800])),
+                                          ),
+                                  ),
+                                ),
+                              ],
+                            ),
+
+                            const SizedBox(height: 24),
+
+                            // Push remaining content to bottom
+                            const Spacer(),
+
+                            // Post Button
+                            SizedBox(
+                              width: double.infinity,
+                              height: 56,
+                              child: ElevatedButton(
+                                onPressed: _confirmAndPost,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFFF0B429),
+                                  foregroundColor: Colors.black87,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                  elevation: 0,
+                                ),
+                                child: const Text('Post', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    ],
-                  ),
-
-                  const Spacer(),
-
-                  // Post Button
-                  SizedBox(
-                    width: double.infinity,
-                    height: 56,
-                    child: ElevatedButton(
-                      onPressed: _confirmAndPost,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFF0B429),
-                        foregroundColor: Colors.black87,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                        elevation: 0,
-                      ),
-                      child: const Text('Post', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
                     ),
-                  ),
-                ],
+                  );
+                },
               ),
             ),
           ),
