@@ -550,14 +550,18 @@ class FirebaseService {
           // so UI can display a helpful message instead of silently showing
           // an empty list. Otherwise emit an empty list as a fallback.
           try {
-            if (err is FirebaseException && err.code == 'permission-denied') {
-              sink.addError(FirebaseException(
-                plugin: 'cloud_firestore',
-                message: 'Permission denied reading Firestore. Check rules and whether the user is signed in.',
-              ), st);
+            // Forward FirebaseExceptions to listeners so the UI can display
+            // a helpful error (for example: permission-denied, failed-precondition
+            // (index required), etc.) rather than silently falling back to an
+            // empty list which misleads the UI into showing "No listings".
+            if (err is FirebaseException) {
+              // Preserve the original exception message where possible.
+              sink.addError(err, st);
               return;
             }
           } catch (_) {}
+
+          // Non-Firebase errors fall back to an empty list so the UI can continue.
           try {
             sink.add([]);
           } catch (_) {}

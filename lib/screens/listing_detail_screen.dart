@@ -138,11 +138,11 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
             const SizedBox(height: 6),
             Text('by ${widget.listing?['author'] ?? ''}', style: const TextStyle(color: Colors.grey)),
             const SizedBox(height: 12),
-            const Text('Condition: Like New', style: TextStyle(color: Colors.black87)),
+            Text('Condition: ${widget.listing?['condition'] ?? 'Like New'}', style: const TextStyle(color: Colors.black87)),
             const SizedBox(height: 12),
             const Text('Description', style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
-            const Text('This textbook is in very good condition. Pages are clean and cover is intact. Great for semester use.'),
+            Text(widget.listing?['swapFor'] ?? widget.listing?['description'] ?? 'No description provided.'),
 
             const SizedBox(height: 18),
             // Swap requests (owner view)

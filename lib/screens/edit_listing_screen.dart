@@ -16,6 +16,7 @@ class _EditListingScreenState extends State<EditListingScreen> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _titleCtrl;
   late final TextEditingController _authorCtrl;
+  late final TextEditingController _swapForCtrl;
   late String _condition;
   File? _imageFile;
   bool _loading = false;
@@ -27,6 +28,7 @@ class _EditListingScreenState extends State<EditListingScreen> {
     super.initState();
     _titleCtrl = TextEditingController(text: widget.listing['title'] ?? '');
     _authorCtrl = TextEditingController(text: widget.listing['author'] ?? '');
+    _swapForCtrl = TextEditingController(text: widget.listing['swapFor'] ?? '');
     _condition = widget.listing['condition'] ?? 'New';
   }
 
@@ -34,6 +36,7 @@ class _EditListingScreenState extends State<EditListingScreen> {
   void dispose() {
     _titleCtrl.dispose();
     _authorCtrl.dispose();
+    _swapForCtrl.dispose();
     super.dispose();
   }
 
@@ -61,6 +64,7 @@ class _EditListingScreenState extends State<EditListingScreen> {
       final updatedData = {
         'title': _titleCtrl.text.trim(),
         'author': _authorCtrl.text.trim(),
+        'swapFor': _swapForCtrl.text.trim(),
         'condition': _condition,
         'imageUrl': imageUrl,
       };
@@ -111,6 +115,12 @@ class _EditListingScreenState extends State<EditListingScreen> {
                 controller: _authorCtrl,
                 decoration: const InputDecoration(labelText: 'Author'),
                 validator: (v) => (v == null || v.trim().isEmpty) ? 'Please enter the author' : null,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _swapForCtrl,
+                decoration: const InputDecoration(labelText: 'Swap-For (optional)'),
+                validator: (v) => null,
               ),
               const SizedBox(height: 12),
               const Text('Condition', style: TextStyle(fontWeight: FontWeight.bold)),

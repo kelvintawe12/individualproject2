@@ -15,6 +15,8 @@ class MyListingsScreen extends StatefulWidget {
 class _MyListingsScreenState extends State<MyListingsScreen> with TickerProviderStateMixin {
   late final AnimationController _staggerController;
   final User? _user = FirebaseAuth.instance.currentUser;
+  List<Map<String, dynamic>>? _manualItems;
+  bool _loadingManual = false;
 
   @override
   void initState() {
@@ -98,22 +100,81 @@ class _MyListingsScreenState extends State<MyListingsScreen> with TickerProvider
             }
 
             // Error
-            if (snapshot.hasError) {
-              return Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.error_outline, color: Colors.red, size: 64),
-                    const SizedBox(height: 16),
-                    Text('Error: ${snapshot.error}', style: const TextStyle(color: Colors.white70)),
-                    TextButton(
-                      onPressed: () => setState(() {}),
-                      child: const Text('Retry', style: TextStyle(color: Color(0xFFF0B429))),
+              if (snapshot.hasError) {
+                // Show a more actionable error UI (diagnostics + one-shot fetch fallback)
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.error_outline, color: Colors.red, size: 64),
+                        const SizedBox(height: 16),
+                        Text('Failed to load listings: ${snapshot.error}', style: const TextStyle(color: Colors.white70), textAlign: TextAlign.center),
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 12,
+                          children: [
+                            ElevatedButton(
+                              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFF0B429)),
+                              onPressed: () async {
+                                // show diagnostics
+                                final diag = await FirebaseService.getDiagnostics(queryDesc: 'listenUserListings for ${_user?.uid}');
+                                if (!mounted) return;
+                                await showDialog<void>(context: context, builder: (_) => AlertDialog(title: const Text('Diagnostics'), content: SingleChildScrollView(child: Text(diag)), actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('OK'))]));
+                              },
+                              child: const Text('Show diagnostics'),
+                            ),
+                            ElevatedButton(
+                              style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[700]),
+                              onPressed: _loadingManual
+                                  ? null
+                                  : () async {
+                                      // Try a one-time fetch (may surface a clearer error)
+                                      setState(() {
+                                        _loadingManual = true;
+                                        _manualItems = null;
+                                      });
+                                      try {
+                                        final items = await FirebaseService.getListingsForUser(_user!.uid);
+                                        if (!mounted) return;
+                                        setState(() {
+                                          _manualItems = items;
+                                        });
+                                      } catch (e) {
+                                        if (!mounted) return;
+                                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fetch failed: $e')));
+                                      } finally {
+                                        if (mounted) setState(() => _loadingManual = false);
+                                      }
+                                    },
+                              child: _loadingManual ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Try fetch once'),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 18),
+                        // If manual fetch produced items, show a small preview list
+                        if (_manualItems != null)
+                          SizedBox(
+                            height: 300,
+                            child: ListView.builder(
+                              itemCount: _manualItems!.length,
+                              itemBuilder: (ctx, i) {
+                                final it = _manualItems![i];
+                                return ListTile(
+                                  leading: it['imageUrl'] != null ? SizedBox(width: 48, height: 48, child: Image.network(it['imageUrl'], fit: BoxFit.cover)) : const CircleAvatar(child: Icon(Icons.book)),
+                                  title: Text(it['title'] ?? 'Untitled', style: const TextStyle(color: Colors.white)),
+                                  subtitle: Text(it['author'] ?? '', style: const TextStyle(color: Colors.white70)),
+                                  onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => EditListingScreen(listing: it))),
+                                );
+                              },
+                            ),
+                          ),
+                      ],
                     ),
-                  ],
-                ),
-              );
-            }
+                  ),
+                );
+              }
 
             final items = snapshot.data ?? [];
 
