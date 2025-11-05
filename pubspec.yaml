@@ -35,10 +35,9 @@ flutter:
   uses-material-design: true
 
   assets:
-    # UI Backgrounds
     - ui/ui3.png
-    # Images
     - assets/bookOpen.png
     - assets/booksShelf.png
     - assets/c.png
     - assets/confetti.json
+    - assets/book_open.json
