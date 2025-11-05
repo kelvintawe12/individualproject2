@@ -103,7 +103,9 @@ class _SignInScreenState extends State<SignInScreen>
       await FirebaseService.signIn(_emailCtrl.text.trim(), _passCtrl.text);
       if (mounted) {
         final name = _emailCtrl.text.split('@').first;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Welcome back, $name!')));
+        final uid = FirebaseAuth.instance.currentUser?.uid;
+        if (kDebugMode) debugPrint('Signed in uid=$uid');
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Welcome back, $name! (uid=${uid ?? 'unknown'})')));
       }
     } on FirebaseAuthException catch (e) {
       final msg = e.message ?? e.code;
@@ -180,11 +182,15 @@ class _SignInScreenState extends State<SignInScreen>
                       // into account so small overflows (2px) at the bottom are avoided
                       // when the keyboard appears.
                       final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+                      // Add a tiny extra bottom padding and slightly reduce the
+                      // minHeight to avoid fractional pixel RenderFlex overflows
+                      // that can occur when the keyboard or SnackBar briefly
+                      // changes available space.
                       return SingleChildScrollView(
                         physics: const BouncingScrollPhysics(),
-                        padding: EdgeInsets.only(top: 8, bottom: bottomInset + 16),
+                        padding: EdgeInsets.only(top: 8, bottom: bottomInset + 24),
                         child: ConstrainedBox(
-                          constraints: BoxConstraints(minHeight: constraints.maxHeight - bottomInset),
+                          constraints: BoxConstraints(minHeight: constraints.maxHeight - bottomInset - 2),
                           child: IntrinsicHeight(
                             child: Column(
                               children: [

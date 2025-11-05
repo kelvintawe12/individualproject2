@@ -325,11 +325,13 @@ class FirebaseService {
       'imageUrl': i,
       'createdAt': FieldValue.serverTimestamp(),
     };
+
     await messagesRef.add(payload);
+
     // Update chat metadata
     final chatRef = FirebaseFirestore.instance.collection('chats').doc(chatId);
     await chatRef.update({
-      'lastMessage': (text ?? (imageUrl != null ? '[image]' : '')),
+      'lastMessage': (t.isNotEmpty ? t : (i.isNotEmpty ? '[image]' : '')),
       'lastSentAt': FieldValue.serverTimestamp(),
     });
     return;
@@ -353,6 +355,20 @@ class FirebaseService {
   /// stream will emit an empty list and log the error to debug output so the
   /// UI can continue to operate instead of crashing the app.
   static Stream<List<Map<String, dynamic>>> _queryToListStream(Query query) {
+    // Capture a brief description of the query for diagnostics. Prefer the
+    // collection path when possible; otherwise fall back to toString().
+    String queryDesc;
+    try {
+      if (query is CollectionReference) {
+        // Promoted inside the if to access .path without a cast.
+        queryDesc = query.path;
+      } else {
+        queryDesc = query.toString();
+      }
+    } catch (_) {
+      queryDesc = query.toString();
+    }
+
     // Use a StreamTransformer to catch errors and map QuerySnapshot -> List<Map>
     return query.snapshots().transform(
       StreamTransformer<QuerySnapshot<Map<String, dynamic>>, List<Map<String, dynamic>>>.fromHandlers(
@@ -370,10 +386,23 @@ class FirebaseService {
           }
         },
         handleError: (err, st, sink) {
-          if (kDebugMode) {
-            debugPrint('[FirebaseService] Firestore listen error: $err');
-            debugPrint('$st');
+          // Emit diagnostic information to help identify auth/project/rules issues.
+          try {
+            final user = FirebaseAuth.instance.currentUser;
+            final active = Firebase.app();
+            final opts = active.options;
+            if (kDebugMode) {
+              debugPrint('[FirebaseService] Firestore listen error: $err');
+              debugPrint('$st');
+              debugPrint('[FirebaseService] Query: $queryDesc');
+              debugPrint('[FirebaseService] kIsWeb: $kIsWeb');
+              debugPrint('[FirebaseService] Active app projectId=${opts.projectId}, apiKey=${opts.apiKey}, appId=${opts.appId}, authDomain=${opts.authDomain}');
+              debugPrint('[FirebaseService] Current user uid=${user?.uid ?? 'null'}, email=${user?.email ?? 'null'}');
+            }
+          } catch (e) {
+            if (kDebugMode) debugPrint('[FirebaseService] Failed to print diagnostics: $e');
           }
+
           // If the error is a permission denied error, forward it to listeners
           // so UI can display a helpful message instead of silently showing
           // an empty list. Otherwise emit an empty list as a fallback.
@@ -411,5 +440,34 @@ class FirebaseService {
     final snap = await uploadTask;
     final url = await snap.ref.getDownloadURL();
     return url;
+  }
+
+  /// Return a human-readable diagnostics string useful for reporting listen
+  /// failures. Optionally include a query description and the original error.
+  static Future<String> getDiagnostics({String? queryDesc, Object? error}) async {
+    final sb = StringBuffer();
+    sb.writeln('timestamp: ${DateTime.now().toIso8601String()}');
+    sb.writeln('kIsWeb: $kIsWeb');
+    try {
+      final active = Firebase.app();
+      final opts = active.options;
+      sb.writeln('activeApp: ${active.name}');
+      sb.writeln('projectId: ${opts.projectId}');
+      sb.writeln('apiKey: ${opts.apiKey}');
+      sb.writeln('appId: ${opts.appId}');
+      sb.writeln('authDomain: ${opts.authDomain}');
+    } catch (e) {
+      sb.writeln('failed to read Firebase.app(): $e');
+    }
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      sb.writeln('currentUser.uid: ${user?.uid ?? 'null'}');
+      sb.writeln('currentUser.email: ${user?.email ?? 'null'}');
+    } catch (e) {
+      sb.writeln('failed to read FirebaseAuth.currentUser: $e');
+    }
+    if (queryDesc != null) sb.writeln('query: $queryDesc');
+    if (error != null) sb.writeln('error: $error');
+    return sb.toString();
   }
 }

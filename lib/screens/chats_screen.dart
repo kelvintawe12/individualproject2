@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/firebase_service.dart';
+import 'package:flutter/services.dart';
 import 'chat_detail_screen.dart';
 
 class ChatsScreen extends StatelessWidget {
@@ -32,6 +33,51 @@ class ChatsScreen extends StatelessWidget {
               stream: FirebaseService.listenChatsForUser(uid),
               builder: (context, snap) {
                 if (snap.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+
+                if (snap.hasError) {
+                  final err = snap.error;
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.lock_outline, color: Colors.redAccent, size: 56),
+                          const SizedBox(height: 12),
+                          Text('Could not load chats: $err', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70)),
+                          const SizedBox(height: 12),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              ElevatedButton(
+                                onPressed: () => (context as Element).markNeedsBuild(),
+                                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFF0B429)),
+                                child: const Text('Retry'),
+                              ),
+                              const SizedBox(width: 12),
+                              ElevatedButton.icon(
+                                onPressed: () async {
+                                  try {
+                                    final diag = await FirebaseService.getDiagnostics(queryDesc: 'chats for user=$uid');
+                                    final payload = 'Error: $err\n\n$diag';
+                                    await Clipboard.setData(ClipboardData(text: payload));
+                                    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Diagnostics copied to clipboard')));
+                                  } catch (e) {
+                                    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to copy diagnostics: $e')));
+                                  }
+                                },
+                                icon: const Icon(Icons.bug_report_outlined),
+                                label: const Text('Report'),
+                                style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[800]),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+
                 final chats = snap.data ?? [];
                 if (chats.isEmpty) {
                   return Center(

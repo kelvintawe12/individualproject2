@@ -3,7 +3,10 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import 'post_screen.dart';
+import 'package:flutter/services.dart';
 import '../services/firebase_service.dart';
 import 'profile_screen.dart';
 
@@ -84,18 +87,99 @@ class _BrowseScreenState extends State<BrowseScreen> with TickerProviderStateMix
               }
             },
           ),
+          // Developer debug button (visible only in debug builds)
+          if (kDebugMode)
+            IconButton(
+              tooltip: 'Dev info',
+              icon: const Icon(Icons.developer_mode, color: Colors.amberAccent),
+              onPressed: () async {
+                try {
+                  final uid = FirebaseAuth.instance.currentUser?.uid ?? 'null';
+                  final email = FirebaseAuth.instance.currentUser?.email ?? 'null';
+                  final apps = Firebase.apps.map((a) => a.name).join(', ');
+                  final active = Firebase.app();
+                  final opts = active.options;
+                  final info = StringBuffer();
+                  info.writeln('kIsWeb: $kIsWeb');
+                  info.writeln('Configured apps: $apps');
+                  info.writeln('Active app: ${active.name}');
+                  info.writeln('projectId: ${opts.projectId}');
+                  info.writeln('apiKey: ${opts.apiKey}');
+                  info.writeln('appId: ${opts.appId}');
+                  info.writeln('authDomain: ${opts.authDomain}');
+                  info.writeln('currentUser.uid: $uid');
+                  info.writeln('currentUser.email: $email');
+                  await showDialog<void>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text('Developer info'),
+                      content: SingleChildScrollView(child: SelectableText(info.toString(), style: const TextStyle(fontFamily: 'monospace'))),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Close')),
+                      ],
+                    ),
+                  );
+                } catch (e) {
+                  await showDialog<void>(context: context, builder: (ctx) => AlertDialog(title: const Text('Error'), content: Text(e.toString()), actions: [TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Close'))]));
+                }
+              },
+            ),
         ],
       ),
       body: StreamBuilder<List<Map<String, dynamic>>>(
         stream: FirebaseService.listenListings(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
-              child: CircularProgressIndicator(color: Color(0xFFF0B429)),
-            );
-          }
+              return const Center(
+                child: CircularProgressIndicator(color: Color(0xFFF0B429)),
+              );
+            }
 
-          final items = snapshot.data ?? [];
+            if (snapshot.hasError) {
+              final err = snapshot.error;
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.lock_outline, color: Colors.redAccent, size: 56),
+                      const SizedBox(height: 12),
+                      Text('Could not load listings: $err', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70)),
+                      const SizedBox(height: 12),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          ElevatedButton(
+                            onPressed: () => setState(() {}),
+                            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFF0B429)),
+                            child: const Text('Retry'),
+                          ),
+                          const SizedBox(width: 12),
+                          ElevatedButton.icon(
+                            onPressed: () async {
+                              try {
+                                final diag = await FirebaseService.getDiagnostics(queryDesc: 'listings');
+                                final payload = 'Error: $err\n\n$diag';
+                                await Clipboard.setData(ClipboardData(text: payload));
+                                if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Diagnostics copied to clipboard')));
+                              } catch (e) {
+                                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to copy diagnostics: $e')));
+                              }
+                            },
+                            icon: const Icon(Icons.bug_report_outlined),
+                            label: const Text('Report'),
+                            style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[800]),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
+
+            final items = snapshot.data ?? [];
 
           if (items.isEmpty) {
             return Center(
