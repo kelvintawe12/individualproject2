@@ -1,30 +1,470 @@
 import 'package:flutter/material.dart';
-import '../widgets/listing_card.dart';
-import '../services/firebase_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:ui' as ui;
+import '../services/firebase_service.dart';
+import 'post_screen.dart';
+import 'edit_listing_screen.dart';
 
-
-class MyListingsScreen extends StatelessWidget {
+class MyListingsScreen extends StatefulWidget {
   const MyListingsScreen({Key? key}) : super(key: key);
+  @override
+  State<MyListingsScreen> createState() => _MyListingsScreenState();
+}
+
+class _MyListingsScreenState extends State<MyListingsScreen> with TickerProviderStateMixin {
+  late final AnimationController _staggerController;
+  final User? _user = FirebaseAuth.instance.currentUser;
+
+  @override
+  void initState() {
+    super.initState();
+    _staggerController = AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
+  }
+
+  @override
+  void dispose() {
+    _staggerController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _refresh() async {
+    setState(() {});
+    await Future.delayed(const Duration(milliseconds: 800));
+  }
+
+  Future<void> _deleteListing(String id) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => _DeleteDialog(),
+    );
+    if (confirm != true) return;
+
+    try {
+      await FirebaseService.deleteListing(id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Listing deleted'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    if (_user == null) {
+      return Scaffold(
+        backgroundColor: const Color(0xFF0F1724),
+        body: Center(
+          child: Text('Please sign in', style: TextStyle(color: Colors.white70, fontSize: 18)),
+        ),
+      );
+    }
+
     return Scaffold(
-      appBar: AppBar(title: const Text('My Listings'), backgroundColor: const Color(0xFF0F1724)),
-      body: StreamBuilder<List<Map<String, dynamic>>>(
-        stream: FirebaseService.listenListings(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-          final items = snapshot.data ?? [];
-          // filter owner-owned listings for demo (ownerId would be compared to current user in a real app)
-          final ownerItems = items.where((m) => m['ownerId'] == FirebaseAuth.instance.currentUser?.uid).toList();
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: ownerItems.length,
-            itemBuilder: (context, i) => ListingCard(listing: ownerItems[i]),
-          );
-        },
+      backgroundColor: const Color(0xFF0F1724),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF0F1724),
+        elevation: 0,
+        title: const Text(
+          'My Listings',
+          style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white),
+        ),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
       ),
+      body: RefreshIndicator(
+        onRefresh: _refresh,
+        color: const Color(0xFFF0B429),
+        child: StreamBuilder<List<Map<String, dynamic>>>(
+          stream: FirebaseService.listenUserListings(_user!.uid),
+          builder: (context, snapshot) {
+            // Loading
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return _buildShimmer();
+            }
+
+            // Error
+            if (snapshot.hasError) {
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.error_outline, color: Colors.red, size: 64),
+                    const SizedBox(height: 16),
+                    Text('Error: ${snapshot.error}', style: const TextStyle(color: Colors.white70)),
+                    TextButton(
+                      onPressed: () => setState(() {}),
+                      child: const Text('Retry', style: TextStyle(color: Color(0xFFF0B429))),
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            final items = snapshot.data ?? [];
+
+            // Empty
+            if (items.isEmpty) {
+              return _EmptyState(onAdd: () => Navigator.of(context).push(_slideRoute()));
+            }
+
+            // Animate in
+            _staggerController.forward(from: 0);
+
+            return ListView.builder(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+              itemCount: items.length,
+              itemBuilder: (context, i) {
+                final item = items[i];
+                return _AnimatedListingCard(
+                  listing: item,
+                  index: i,
+                  controller: _staggerController,
+                  onDelete: () => _deleteListing(item['id'] as String),
+                  onEdit: () {
+                    Navigator.of(context).push(MaterialPageRoute(builder: (_) => EditListingScreen(listing: item)));
+                  },
+                );
+              },
+            );
+          },
+        ),
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => Navigator.of(context).push(_slideRoute()),
+        backgroundColor: const Color(0xFFF0B429),
+        child: const Icon(Icons.add, color: Colors.black87),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+      bottomNavigationBar: _BottomNavBar(currentIndex: 1),
+    );
+  }
+
+  Route _slideRoute() {
+    return PageRouteBuilder(
+      pageBuilder: (_, __, ___) => const PostScreen(),
+      transitionsBuilder: (_, animation, __, child) {
+        const begin = Offset(0.0, 1.0);
+        const end = Offset.zero;
+        const curve = Curves.easeOut;
+        var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+        return SlideTransition(position: animation.drive(tween), child: child);
+      },
+    );
+  }
+
+  Widget _buildShimmer() {
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: 5,
+      itemBuilder: (_, __) => Container(
+        margin: const EdgeInsets.symmetric(vertical: 8),
+        height: 140,
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: const Padding(
+          padding: EdgeInsets.all(16),
+          child: Row(
+            children: [
+              _ShimmerBox(width: 80, height: 110),
+              SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _ShimmerBox(width: 180, height: 20),
+                    SizedBox(height: 8),
+                    _ShimmerBox(width: 120, height: 16),
+                    SizedBox(height: 16),
+                    Row(children: [_ShimmerBox(width: 60, height: 24), SizedBox(width: 8), _ShimmerBox(width: 80, height: 16)]),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Shimmer Placeholder ─────────────────────────────────────
+class _ShimmerBox extends StatelessWidget {
+  final double width, height;
+  const _ShimmerBox({required this.width, required this.height});
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+    );
+  }
+}
+
+// ── Animated Card with Swipe ─────────────────────────────────────
+class _AnimatedListingCard extends StatelessWidget {
+  final Map<String, dynamic> listing;
+  final int index;
+  final AnimationController controller;
+  final VoidCallback onDelete;
+  final VoidCallback onEdit;
+
+  const _AnimatedListingCard({
+    required this.listing,
+    required this.index,
+    required this.controller,
+    required this.onDelete,
+    required this.onEdit,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final animation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: controller,
+        curve: Interval(0.1 * (index % 5), 0.6 + 0.1 * (index % 5), curve: Curves.easeOut),
+      ),
+    );
+
+    return AnimatedBuilder(
+      animation: animation,
+      builder: (context, child) {
+        return Transform.translate(
+          offset: Offset(0, 50 * (1 - animation.value)),
+          child: Opacity(opacity: animation.value, child: child),
+        );
+      },
+      child: Dismissible(
+        key: Key(listing['id'] as String),
+        direction: DismissDirection.endToStart,
+        background: Container(
+          margin: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(20)),
+          alignment: Alignment.centerRight,
+          padding: const EdgeInsets.only(right: 24),
+          child: const Icon(Icons.delete, color: Colors.white, size: 28),
+        ),
+        onDismissed: (_) => onDelete(),
+        child: _GlassListingCard(listing: listing, onEdit: onEdit),
+      ),
+    );
+  }
+}
+
+// ── Glassmorphism Listing Card ─────────────────────────────────────
+class _GlassListingCard extends StatelessWidget {
+  final Map<String, dynamic> listing;
+  final VoidCallback onEdit;
+
+  const _GlassListingCard({required this.listing, required this.onEdit});
+
+  @override
+  Widget build(BuildContext context) {
+    final title = listing['title'] ?? 'Untitled';
+    final author = listing['author'] ?? 'Unknown';
+    final condition = listing['condition'] ?? 'Used';
+    final imageUrl = listing['imageUrl'] as String?;
+    final rawTs = listing['timestamp'];
+    DateTime timestamp;
+    if (rawTs is Timestamp) {
+      timestamp = rawTs.toDate();
+    } else if (rawTs is DateTime) {
+      timestamp = rawTs;
+    } else {
+      timestamp = DateTime.now();
+    }
+    final timeAgo = _formatTimeAgo(timestamp);
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: BackdropFilter(
+          filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+            child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.white.withOpacity(0.1)),
+            ),
+            child: Row(
+              children: [
+                // Cover
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: imageUrl != null
+                      ? Image.network(imageUrl, width: 80, height: 110, fit: BoxFit.cover)
+                      : _placeholderCover(),
+                ),
+                const SizedBox(width: 16),
+
+                // Details
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title, style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w600), maxLines: 2, overflow: TextOverflow.ellipsis),
+                      const SizedBox(height: 4),
+                      Text(author, style: const TextStyle(color: Colors.white70, fontSize: 14)),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          _ConditionBadge(condition: condition),
+                          const SizedBox(width: 8),
+                          Text(timeAgo, style: const TextStyle(color: Colors.white60, fontSize: 13)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Edit
+                IconButton(
+                  icon: const Icon(Icons.edit_outlined, color: Colors.white70),
+                  onPressed: onEdit,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _placeholderCover() {
+    return Container(
+      width: 80,
+      height: 110,
+      color: Colors.grey[800],
+      child: const Icon(Icons.book, color: Colors.white70, size: 36),
+    );
+  }
+
+  String _formatTimeAgo(DateTime date) {
+    final diff = DateTime.now().difference(date);
+    if (diff.inDays > 0) return '${diff.inDays}d ago';
+    if (diff.inHours > 0) return '${diff.inHours}h ago';
+    if (diff.inMinutes > 0) return '${diff.inMinutes}m ago';
+    return 'Just now';
+  }
+}
+
+// ── Condition Badge ─────────────────────────────────────
+class _ConditionBadge extends StatelessWidget {
+  final String condition;
+  const _ConditionBadge({required this.condition});
+
+  @override
+  Widget build(BuildContext context) {
+    final isNew = condition.toLowerCase().contains('new');
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: isNew ? Colors.green.withOpacity(0.2) : Colors.orange.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: isNew ? Colors.green : Colors.orange, width: 1),
+      ),
+      child: Text(
+        condition,
+        style: TextStyle(color: isNew ? Colors.green : Colors.orange, fontSize: 12, fontWeight: FontWeight.w500),
+      ),
+    );
+  }
+}
+
+// ── Empty State ─────────────────────────────────────
+class _EmptyState extends StatelessWidget {
+  final VoidCallback onAdd;
+  const _EmptyState({required this.onAdd});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Image.asset('assets/booksShelf.png', width: 180, height: 180),
+          const SizedBox(height: 16),
+          const Text('No listings yet', style: TextStyle(color: Colors.white70, fontSize: 18)),
+          const SizedBox(height: 12),
+          ElevatedButton.icon(
+            onPressed: onAdd,
+            icon: const Icon(Icons.add, color: Colors.black87),
+            label: const Text('Post a Book'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFF0B429),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Delete Dialog ─────────────────────────────────────
+class _DeleteDialog extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: const Text('Delete Listing?'),
+      content: const Text('This action cannot be undone.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Delete'),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Bottom Navigation ─────────────────────────────────────
+class _BottomNavBar extends StatelessWidget {
+  final int currentIndex;
+  const _BottomNavBar({required this.currentIndex});
+
+  @override
+  Widget build(BuildContext context) {
+    return BottomNavigationBar(
+      currentIndex: currentIndex,
+      backgroundColor: const Color(0xFF0F1724),
+      unselectedItemColor: Colors.white60,
+      selectedItemColor: const Color(0xFFF0B429),
+      type: BottomNavigationBarType.fixed,
+      items: const [
+        BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
+        BottomNavigationBarItem(icon: Icon(Icons.list_alt), label: 'My Listings'),
+        BottomNavigationBarItem(icon: Icon(Icons.chat), label: 'Chats'),
+      ],
+      onTap: (i) {
+        if (i == 0) Navigator.of(context).popUntil((r) => r.isFirst);
+      },
     );
   }
 }

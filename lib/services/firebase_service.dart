@@ -257,4 +257,103 @@ class FirebaseService {
     final ref = FirebaseFirestore.instance.collection('listings').doc(listingId);
     await ref.update(data);
   }
+
+  /// Delete a listing document by id.
+  static Future<void> deleteListing(String listingId) async {
+    final ref = FirebaseFirestore.instance.collection('listings').doc(listingId);
+    await ref.delete();
+  }
+
+  /// Listen to listings for a specific user (ownerId == uid).
+  static Stream<List<Map<String, dynamic>>> listenUserListings(String uid) {
+    final col = FirebaseFirestore.instance.collection('listings').where('ownerId', isEqualTo: uid).orderBy('createdAt', descending: true);
+    return col.snapshots().map((snap) => snap.docs.map((d) {
+          final m = d.data();
+          m['id'] = d.id;
+          return m;
+        }).toList());
+  }
+
+  // ----------------- Chat / Messaging -----------------
+
+  /// Deterministic chat id for a direct 1:1 chat between two users.
+  /// We use a stable doc id by sorting the two uids and joining with an underscore.
+  static String _directChatId(String a, String b) {
+    final parts = [a, b]..sort();
+    return parts.join('_');
+  }
+
+  /// Get or create a direct chat document between two users. Returns the chatId.
+  static Future<String> getOrCreateDirectChat(String uidA, String uidB) async {
+    final id = _directChatId(uidA, uidB);
+    final ref = FirebaseFirestore.instance.collection('chats').doc(id);
+    final snap = await ref.get();
+    if (!snap.exists) {
+      await ref.set({
+        'participants': [uidA, uidB],
+        'lastMessage': '',
+        'lastSentAt': FieldValue.serverTimestamp(),
+      });
+    }
+    return ref.id;
+  }
+
+  /// Send a message to a chat. Adds a message doc under chats/{chatId}/messages
+  /// and updates the chat doc's lastMessage/lastSentAt fields.
+  static Future<void> sendMessage(String chatId, String senderId, {String? text, String? imageUrl}) async {
+    final messagesRef = FirebaseFirestore.instance.collection('chats').doc(chatId).collection('messages');
+    final payload = <String, dynamic>{
+      'senderId': senderId,
+      'text': text ?? '',
+      'imageUrl': imageUrl ?? '',
+      'createdAt': FieldValue.serverTimestamp(),
+    };
+  await messagesRef.add(payload);
+    // Update chat metadata
+    final chatRef = FirebaseFirestore.instance.collection('chats').doc(chatId);
+    await chatRef.update({
+      'lastMessage': (text ?? (imageUrl != null ? '[image]' : '')),
+      'lastSentAt': FieldValue.serverTimestamp(),
+    });
+    return;
+  }
+
+  /// Listen to messages for a chat ordered by createdAt ascending.
+  static Stream<List<Map<String, dynamic>>> listenMessages(String chatId) {
+    final ref = FirebaseFirestore.instance.collection('chats').doc(chatId).collection('messages').orderBy('createdAt', descending: false);
+    return ref.snapshots().map((snap) => snap.docs.map((d) {
+          final m = d.data();
+          m['id'] = d.id;
+          return m;
+        }).toList());
+  }
+
+  /// Listen to chats for a user (where participants contains uid), ordered by lastSentAt desc.
+  static Stream<List<Map<String, dynamic>>> listenChatsForUser(String uid) {
+    final ref = FirebaseFirestore.instance.collection('chats').where('participants', arrayContains: uid).orderBy('lastSentAt', descending: true);
+    return ref.snapshots().map((snap) => snap.docs.map((d) {
+          final m = d.data();
+          m['id'] = d.id;
+          return m;
+        }).toList());
+  }
+
+  /// Upload an image for chat (returns download URL).
+  static Future<String> uploadChatImage(File localFile, Function(double)? onProgress) async {
+    final storage = FirebaseStorage.instance;
+    final id = const Uuid().v4();
+    final ref = storage.ref().child('chat_images').child('$id.jpg');
+    final uploadTask = ref.putFile(localFile);
+
+    uploadTask.snapshotEvents.listen((event) {
+      final bytesTransferred = event.bytesTransferred.toDouble();
+      final totalBytes = event.totalBytes.toDouble();
+      final progress = (totalBytes > 0) ? (bytesTransferred / totalBytes) : 0.0;
+      if (onProgress != null) onProgress(progress.clamp(0.0, 1.0));
+    });
+
+    final snap = await uploadTask;
+    final url = await snap.ref.getDownloadURL();
+    return url;
+  }
 }

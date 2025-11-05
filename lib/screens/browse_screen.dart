@@ -35,10 +35,16 @@ class _BrowseScreenState extends State<BrowseScreen> with TickerProviderStateMix
     return Scaffold(
       backgroundColor: const Color(0xFF0F1724),
       appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
+        // Only show a back button when this screen was pushed onto the
+        // navigator stack. When BrowseScreen is the app's home/body (as in
+        // BookSwapApp) a back pop would leave a blank/white route — instead
+        // hide the leading widget.
+        leading: Navigator.canPop(context)
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
+                onPressed: () => Navigator.of(context).pop(),
+              )
+            : null,
         title: const Text(
           'Browse Listings',
           style: TextStyle(

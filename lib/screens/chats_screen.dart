@@ -1,6 +1,9 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/firebase_service.dart';
 import 'chat_detail_screen.dart';
 
 class ChatsScreen extends StatelessWidget {
@@ -8,6 +11,7 @@ class ChatsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
     return Scaffold(
       backgroundColor: const Color(0xFF0F1724),
       appBar: AppBar(
@@ -22,31 +26,76 @@ class ChatsScreen extends StatelessWidget {
           onPressed: () => Navigator.of(context).pop(),
         ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          _ChatTile(
-            name: 'Alice',
-            lastMessage: 'Yes, I\'m interested!',
-            time: 'May 20',
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => const ChatDetailScreen(chatId: 'chat1', otherUserName: 'Alice'),
-              ),
+      body: uid == null
+          ? const Center(child: Text('Sign in to see chats', style: TextStyle(color: Colors.white)))
+          : StreamBuilder<List<Map<String, dynamic>>>(
+              stream: FirebaseService.listenChatsForUser(uid),
+              builder: (context, snap) {
+                if (snap.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+                final chats = snap.data ?? [];
+                if (chats.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Text('No chats yet', style: TextStyle(color: Colors.white)),
+                        const SizedBox(height: 12),
+                        ElevatedButton.icon(
+                          onPressed: () async {
+                            final otherUid = await showDialog<String>(
+                              context: context,
+                              builder: (ctx) {
+                                final ctrl = TextEditingController();
+                                return AlertDialog(
+                                  title: const Text('Start chat'),
+                                  content: TextField(controller: ctrl, decoration: const InputDecoration(labelText: 'Other user UID')),
+                                  actions: [
+                                    TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancel')),
+                                    TextButton(onPressed: () => Navigator.of(ctx).pop(ctrl.text.trim()), child: const Text('Start')),
+                                  ],
+                                );
+                              },
+                            );
+                            if (otherUid != null && otherUid.isNotEmpty) {
+                              try {
+                                final chatId = await FirebaseService.getOrCreateDirectChat(uid, otherUid);
+                                Navigator.of(context).push(MaterialPageRoute(builder: (_) => ChatDetailScreen(chatId: chatId, otherUserName: otherUid)));
+                              } catch (e) {
+                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to create chat: $e')));
+                              }
+                            }
+                          },
+                          icon: const Icon(Icons.chat),
+                          label: const Text('Start a chat'),
+                          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFF0B429)),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+                return ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: chats.length,
+                  itemBuilder: (context, i) {
+                    final chat = chats[i];
+                    final participants = List<String>.from(chat['participants'] ?? []);
+                    final other = participants.firstWhere((p) => p != uid, orElse: () => participants.first);
+                    final lastMessage = chat['lastMessage'] ?? '';
+                    final lastSent = chat['lastSentAt'];
+                    String timeLabel = '';
+                    if (lastSent is Timestamp) {
+                      timeLabel = TimeOfDay.fromDateTime(lastSent.toDate()).format(context);
+                    }
+                    return _ChatTile(
+                      name: other,
+                      lastMessage: lastMessage,
+                      time: timeLabel,
+                      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ChatDetailScreen(chatId: chat['id'], otherUserName: other))),
+                    );
+                  },
+                );
+              },
             ),
-          ),
-          _ChatTile(
-            name: 'Bob',
-            lastMessage: 'Can we meet tomorrow?',
-            time: 'May 19',
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => const ChatDetailScreen(chatId: 'chat2', otherUserName: 'Bob'),
-              ),
-            ),
-          ),
-        ],
-      ),
       bottomNavigationBar: _BottomNavBar(currentIndex: 1),
     );
   }

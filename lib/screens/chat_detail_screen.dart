@@ -1,7 +1,11 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:lottie/lottie.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
+import '../services/firebase_service.dart';
 
 class ChatDetailScreen extends StatefulWidget {
   final String chatId;
@@ -13,57 +17,78 @@ class ChatDetailScreen extends StatefulWidget {
   State<ChatDetailScreen> createState() => _ChatDetailScreenState();
 }
 
-class _ChatDetailScreenState extends State<ChatDetailScreen> with TickerProviderStateMixin {
+class _ChatDetailScreenState extends State<ChatDetailScreen> {
   final TextEditingController _messageCtrl = TextEditingController();
-  final List<Map<String, dynamic>> _messages = [
-    {'text': 'Hi, are you interested in finding?', 'isMe': false, 'time': 'May 20'},
-    {'text': 'Yes, I\'m interested!', 'isMe': true, 'time': 'May 20'},
-    {'text': 'Great! When can we meet?', 'isMe': false, 'time': 'May 20'},
-    {'text': 'How about tomorrow?', 'isMe': true, 'time': 'May 20'},
-  ];
-
-  late final AnimationController _typingController;
-  bool _isTyping = false;
+  final ImagePicker _picker = ImagePicker();
+  bool _uploading = false;
+  double _uploadProgress = 0.0;
 
   @override
   void initState() {
     super.initState();
-    _typingController = AnimationController(vsync: this, duration: const Duration(milliseconds: 800))
-      ..repeat();
   }
 
   @override
   void dispose() {
-    _typingController.dispose();
     _messageCtrl.dispose();
     super.dispose();
   }
 
-  void _sendMessage() {
-    if (_messageCtrl.text.trim().isEmpty) return;
+  Future<void> _sendMessage() async {
+    final text = _messageCtrl.text.trim();
+    if (text.isEmpty) return;
+    final senderId = FirebaseAuth.instance.currentUser?.uid;
+    if (senderId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('You must be signed in to send messages')));
+      return;
+    }
+    try {
+      _messageCtrl.clear();
+      await FirebaseService.sendMessage(widget.chatId, senderId, text: text);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to send: $e')));
+    }
+  }
 
-    setState(() {
-      _messages.add({
-        'text': _messageCtrl.text.trim(),
-        'isMe': true,
-        'time': 'May 20',
-      });
-      _isTyping = true;
-    });
-    _messageCtrl.clear();
+  Future<void> _sendImage() async {
+    final senderId = FirebaseAuth.instance.currentUser?.uid;
+    if (senderId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sign in to send images')));
+      return;
+    }
+    try {
+      final picked = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
+      if (picked == null) return;
+      setState(() { _uploading = true; _uploadProgress = 0.0; });
+      final url = await FirebaseService.uploadChatImage(File(picked.path), (p) => setState(() => _uploadProgress = p));
+      await FirebaseService.sendMessage(widget.chatId, senderId, imageUrl: url);
+      if (mounted) setState(() { _uploading = false; _uploadProgress = 0.0; });
+    } catch (e) {
+      if (mounted) {
+        setState(() { _uploading = false; _uploadProgress = 0.0; });
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Image send failed: $e')));
+      }
+    }
+  }
 
-    // Simulate reply
-    Future.delayed(const Duration(seconds: 1), () {
-      if (!mounted) return;
-      setState(() {
-        _messages.add({
-          'text': 'Sure! I\'ll be there.',
-          'isMe': false,
-          'time': 'May 20',
-        });
-        _isTyping = false;
-      });
-    });
+  bool _sameDay(dynamic a, dynamic b) {
+    if (a is Timestamp && b is Timestamp) {
+      final da = a.toDate();
+      final db = b.toDate();
+      return da.year == db.year && da.month == db.month && da.day == db.day;
+    }
+    return false;
+  }
+
+  String _formatDateLabel(dynamic ts) {
+    if (ts is Timestamp) {
+      final d = ts.toDate();
+      const months = [
+        'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      ];
+      return '${d.day} ${months[d.month - 1]} ${d.year}';
+    }
+    return '';
   }
 
   @override
@@ -85,27 +110,38 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with TickerProvider
       body: Column(
         children: [
           Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: _messages.length + (_isTyping ? 1 : 0),
-              itemBuilder: (context, i) {
-                if (i == _messages.length && _isTyping) {
-                  return _TypingIndicator();
+            child: StreamBuilder<List<Map<String, dynamic>>>(
+              stream: FirebaseService.listenMessages(widget.chatId),
+              builder: (context, snap) {
+                if (snap.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
                 }
-
-                final msg = _messages[i];
-                final isMe = msg['isMe'] as bool;
-                final showDate = i == 0 || _messages[i - 1]['time'] != msg['time'];
-
-                return Column(
-                  children: [
-                    if (showDate) _DateHeader(date: msg['time']),
-                    _MessageBubble(
-                      text: msg['text'],
-                      isMe: isMe,
-                      time: TimeOfDay.now().format(context),
-                    ),
-                  ],
+                final msgs = snap.data ?? [];
+                return ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: msgs.length,
+                  itemBuilder: (context, i) {
+                    final m = msgs[i];
+                    final senderId = m['senderId'] as String? ?? '';
+                    final isMe = senderId == FirebaseAuth.instance.currentUser?.uid;
+                    final created = m['createdAt'];
+                    String timeLabel;
+                    if (created is Timestamp) {
+                      final dt = created.toDate();
+                      timeLabel = TimeOfDay.fromDateTime(dt).format(context);
+                    } else {
+                      timeLabel = TimeOfDay.now().format(context);
+                    }
+                    // Show a date header when the previous message has a different day
+                    final showDate = i == 0 || !_sameDay(msgs[i - 1]['createdAt'], m['createdAt']);
+                    return Column(
+                      children: [
+                        if (showDate)
+                          _DateHeader(date: _formatDateLabel(m['createdAt'])),
+                        _MessageBubble(text: (m['text'] ?? '') as String, isMe: isMe, time: timeLabel),
+                      ],
+                    );
+                  },
                 );
               },
             ),
@@ -127,7 +163,15 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with TickerProvider
                     onSubmitted: (_) => _sendMessage(),
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 8),
+                if (_uploading)
+                  SizedBox(width: 36, height: 36, child: CircularProgressIndicator(value: _uploadProgress, color: const Color(0xFFF0B429)))
+                else
+                  IconButton(
+                    icon: const Icon(Icons.attach_file, color: Colors.white70),
+                    onPressed: _sendImage,
+                  ),
+                const SizedBox(width: 8),
                 FloatingActionButton(
                   onPressed: _sendMessage,
                   mini: true,
@@ -202,28 +246,7 @@ class _MessageBubble extends StatelessWidget {
   }
 }
 
-// ── Typing Indicator ─────────────────────────────────────
-class _TypingIndicator extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 8),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.12),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Lottie.asset(
-          'assets/typing.json', // add this
-          width: 50,
-          height: 20,
-        ),
-      ),
-    );
-  }
-}
+// Typing indicator removed — use server-side presence/typing hooks later if desired.
 
 // ── Glass TextField ─────────────────────────────────────
 class _GlassTextField extends StatelessWidget {
