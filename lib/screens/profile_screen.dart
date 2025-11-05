@@ -1,6 +1,10 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:lottie/lottie.dart';
+import 'dart:ui' as ui;
 import '../services/firebase_service.dart';
 import 'listing_detail_screen.dart';
 
@@ -11,7 +15,7 @@ class ProfileScreen extends StatefulWidget {
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen> {
+class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateMixin {
   int _listingCount = 0;
   Map<String, int> _swapSummary = {};
   List<Map<String, dynamic>> _history = [];
@@ -19,25 +23,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
   List<Map<String, dynamic>> _userListings = [];
   bool _loading = true;
 
+  late final AnimationController _staggerController;
+
   @override
   void initState() {
     super.initState();
+    _staggerController = AnimationController(vsync: this, duration: const Duration(milliseconds: 800));
     _load();
+  }
+
+  @override
+  void dispose() {
+    _staggerController.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
+
     setState(() => _loading = true);
     try {
       final listings = await FirebaseService.getUserListingCount(user.uid);
       final summary = await FirebaseService.getUserSwapSummary(user.uid);
       final history = await FirebaseService.getUserSwapHistory(user.uid);
-      // lookup listing titles/thumbnails for history
       final ids = history.map((e) => e['listingId'] as String?).whereType<String>().toSet().toList();
       final listingsMap = await FirebaseService.getListingsByIds(ids);
-      // also load user's own listings for the grid
       final myListings = await FirebaseService.getListingsForUser(user.uid);
+
       if (!mounted) return;
       setState(() {
         _listingCount = listings;
@@ -46,8 +59,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _listings = listingsMap;
         _userListings = myListings;
       });
+      _staggerController.forward(from: 0);
     } catch (e) {
-      // ignore for now
+      // ignore
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -56,159 +70,393 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
+    final theme = Theme.of(context);
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Profile')),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: user == null
-            ? const Center(child: Text('Not signed in'))
-            : RefreshIndicator(
-                onRefresh: _load,
-                child: ListView(
-                  children: [
-                    ListTile(
-                      leading: const CircleAvatar(child: Icon(Icons.person)),
-                      title: Text(user.email ?? 'User'),
-                      subtitle: Text('User ID: ${user.uid}'),
-                    ),
-                    const SizedBox(height: 12),
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(12.0),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceAround,
-                          children: [
-                            _statItem('Listings', _listingCount),
-                            _statItem('Requested', _swapSummary['requested'] ?? 0),
-                            _statItem('Received', _swapSummary['received'] ?? 0),
-                            _statItem('Accepted', _swapSummary['accepted'] ?? 0),
-                          ],
+      backgroundColor: const Color(0xFF0F1724),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF0F1724),
+        elevation: 0,
+        title: const Text(
+          'Profile',
+          style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white),
+        ),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ),
+      body: user == null
+          ? const Center(child: Text('Not signed in', style: TextStyle(color: Colors.white70)))
+          : RefreshIndicator(
+              onRefresh: _load,
+              color: const Color(0xFFF0B429),
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  // ── User Header ─────────────────────────────────────
+                  _GlassCard(
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        radius: 30,
+                        backgroundColor: const Color(0xFFF0B429),
+                        child: Text(
+                          (user.displayName ?? user.email ?? '?').substring(0, 1).toUpperCase(),
+                          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black87),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                    const Text('My listings', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    if (_loading)
-                      const SizedBox(height: 80, child: Center(child: CircularProgressIndicator()))
-                    else if (_userListings.isEmpty)
-                      const Text('You have no listings yet')
-                    else
-                      SizedBox(
-                        height: 140,
-                        child: GridView.builder(
-                          scrollDirection: Axis.horizontal,
-                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 1, childAspectRatio: 1.8, mainAxisSpacing: 8),
-                          itemCount: _userListings.length,
-                          itemBuilder: (context, idx) {
-                            final l = _userListings[idx];
-                            return InkWell(
-                              onTap: () {
-                                Navigator.of(context).push(MaterialPageRoute(builder: (_) => ListingDetailScreen(listing: l)));
-                              },
-                              child: Card(
-                                child: Row(
-                                  children: [
-                                    SizedBox(width: 90, height: 120, child: (l['imageUrl'] != null) ? Image.network(l['imageUrl'], fit: BoxFit.cover) : Image.asset('assets/placeholder.png', fit: BoxFit.cover)),
-                                    const SizedBox(width: 8),
-                                    Expanded(child: Text(l['title'] ?? 'Untitled', maxLines: 3, overflow: TextOverflow.ellipsis)),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
-                        ),
+                      title: Text(
+                        user.displayName ?? 'User',
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
                       ),
-                    const SizedBox(height: 12),
-                    const Text('Recent activity', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    if (_loading) const Center(child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator())),
-                    if (!_loading && _history.isEmpty) const Text('No recent activity'),
-                    for (final h in _history)
-                      InkWell(
-                        onTap: () {
-                          final lid = h['listingId'] as String?;
-                          if (lid != null && _listings.containsKey(lid)) {
-                            final listing = _listings[lid]!;
-                            Navigator.of(context).push(MaterialPageRoute(builder: (_) => ListingDetailScreen(listing: listing)));
-                          }
+                      subtitle: Text(
+                        user.email ?? '',
+                        style: const TextStyle(color: Colors.white70),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // ── Stats Row ─────────────────────────────────────
+                  _GlassCard(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        children: [
+                          _StatItem(label: 'Listings', value: _listingCount),
+                          _StatItem(label: 'Requested', value: _swapSummary['requested'] ?? 0),
+                          _StatItem(label: 'Received', value: _swapSummary['received'] ?? 0),
+                          _StatItem(label: 'Accepted', value: _swapSummary['accepted'] ?? 0),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // ── My Listings ─────────────────────────────────────
+                  const Text('My Listings', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 12),
+
+                  if (_loading)
+                    const Center(child: CircularProgressIndicator(color: Color(0xFFF0B429)))
+                  else if (_userListings.isEmpty)
+                    _EmptyState(message: 'No listings yet', lottie: 'assets/booksShelf.png')
+                  else
+                    SizedBox(
+                      height: 160,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: _userListings.length,
+                        itemBuilder: (context, i) {
+                          return _AnimatedListingThumb(
+                            listing: _userListings[i],
+                            index: i,
+                            controller: _staggerController,
+                          );
                         },
-                        child: ListTile(
-                          leading: _buildThumbnail(h['listingId'] as String?),
-                          title: Text(_listings[h['listingId']]?['title'] ?? 'Listing ${h['listingId'] ?? ''}'),
-                          subtitle: Text('${_humanStatus(h['status'])} • ${_formatTime(h['createdAt'] as Timestamp?)}'),
-                          trailing: _statusChip(h['status'] as String?),
-                        ),
                       ),
-                    const SizedBox(height: 20),
-                    ElevatedButton.icon(
+                    ),
+
+                  const SizedBox(height: 24),
+
+                  // ── Recent Activity ─────────────────────────────────
+                  const Text('Recent Activity', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 12),
+
+                  if (_loading)
+                    const Center(child: CircularProgressIndicator(color: Color(0xFFF0B429)))
+                  else if (_history.isEmpty)
+                    _EmptyState(message: 'No recent activity', lottie: 'assets/c.png')
+                  else
+                    ..._history.map((h) => _ActivityItem(
+                          history: h,
+                          listing: _listings[h['listingId'] as String?],
+                          onTap: () {
+                            final lid = h['listingId'] as String?;
+                            if (lid != null && _listings.containsKey(lid)) {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(builder: (_) => ListingDetailScreen(listing: _listings[lid]!)),
+                              );
+                            }
+                          },
+                        )),
+
+                  const SizedBox(height: 24),
+
+                  // ── Resend Verification ─────────────────────────────
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
                       onPressed: () async {
                         await FirebaseService.sendEmailVerification();
-                        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Verification email sent')));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Verification email sent')),
+                        );
                       },
-                      icon: const Icon(Icons.email),
-                      label: const Text('Resend verification email'),
+                      icon: const Icon(Icons.email_outlined),
+                      label: const Text('Resend Verification Email'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFF0B429),
+                        foregroundColor: Colors.black87,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
                     ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 80),
+                ],
               ),
+            ),
+      bottomNavigationBar: _BottomNavBar(currentIndex: 2),
+    );
+  }
+}
+
+// ── Glass Card Wrapper ─────────────────────────────────────
+class _GlassCard extends StatelessWidget {
+  final Widget child;
+  const _GlassCard({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: BackdropFilter(
+        filter: ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white.withOpacity(0.1)),
+          ),
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+// ── Stat Item ─────────────────────────────────────
+class _StatItem extends StatelessWidget {
+  final String label;
+  final int value;
+  const _StatItem({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(
+          '$value',
+          style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 4),
+        Text(label, style: const TextStyle(color: Colors.white70, fontSize: 14)),
+      ],
+    );
+  }
+}
+
+// ── Animated Listing Thumb ─────────────────────────────────────
+class _AnimatedListingThumb extends StatelessWidget {
+  final Map<String, dynamic> listing;
+  final int index;
+  final AnimationController controller;
+
+  const _AnimatedListingThumb({required this.listing, required this.index, required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    final animation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: controller,
+        curve: Interval(0.1 * (index % 4), 0.7 + 0.1 * (index % 4), curve: Curves.easeOut),
+      ),
+    );
+
+    return AnimatedBuilder(
+      animation: animation,
+      builder: (context, child) {
+        return Transform.translate(
+          offset: Offset(0, 50 * (1 - animation.value)),
+          child: Opacity(opacity: animation.value, child: child),
+        );
+      },
+      child: Container(
+        width: 140,
+        margin: const EdgeInsets.only(right: 12),
+        child: InkWell(
+          onTap: () {
+            Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => ListingDetailScreen(listing: listing),
+            ));
+          },
+          borderRadius: BorderRadius.circular(16),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: Stack(
+              children: [
+                (listing['imageUrl'] != null)
+                    ? Image.network(listing['imageUrl'], fit: BoxFit.cover, width: double.infinity, height: double.infinity)
+                    : Image.asset('assets/bookOpen.png', fit: BoxFit.cover),
+                Positioned(
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.bottomCenter,
+                        end: Alignment.topCenter,
+                        colors: [Colors.black.withOpacity(0.7), Colors.transparent],
+                      ),
+                    ),
+                    child: Text(
+                      listing['title'] ?? 'Untitled',
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Activity Item ─────────────────────────────────────
+class _ActivityItem extends StatelessWidget {
+  final Map<String, dynamic> history;
+  final Map<String, dynamic>? listing;
+  final VoidCallback onTap;
+
+  const _ActivityItem({required this.history, required this.listing, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final status = history['status'] as String?;
+    final timestamp = (history['createdAt'] as Timestamp?)?.toDate();
+    final timeAgo = timestamp != null ? _formatTimeAgo(timestamp) : 'Just now';
+
+    return _GlassCard(
+      child: ListTile(
+        onTap: onTap,
+        leading: _buildThumbnail(listing?['imageUrl']),
+        title: Text(
+          listing?['title'] ?? 'Unknown Listing',
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+          maxLines: 1,
+        ),
+        subtitle: Text(
+          '${_humanStatus(status)} • $timeAgo',
+          style: const TextStyle(color: Colors.white70),
+        ),
+        trailing: _StatusChip(status: status),
       ),
     );
   }
 
-  Widget _statItem(String label, int value) => Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [Text('$value', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), const SizedBox(height: 4), Text(label)],
-      );
+  Widget _buildThumbnail(String? url) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: url != null && url.isNotEmpty
+          ? Image.network(url, width: 50, height: 50, fit: BoxFit.cover)
+          : Image.asset('assets/bookOpen.png', width: 50, height: 50, fit: BoxFit.cover),
+    );
+  }
 
   String _humanStatus(String? s) {
     switch (s) {
-      case 'pending':
-        return 'Pending';
-      case 'accepted':
-        return 'Accepted';
-      case 'rejected':
-        return 'Rejected';
-      default:
-        return s ?? 'Unknown';
+      case 'pending': return 'Pending';
+      case 'accepted': return 'Accepted';
+      case 'rejected': return 'Rejected';
+      default: return s ?? 'Unknown';
     }
   }
 
-  String _formatTime(Timestamp? ts) {
-    if (ts == null) return '';
-    final dt = ts.toDate();
-    final diff = DateTime.now().difference(dt);
-    if (diff.inSeconds < 60) return 'just now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    if (diff.inHours < 24) return '${diff.inHours}h ago';
-    if (diff.inDays < 7) return '${diff.inDays}d ago';
-    return '${dt.day}/${dt.month}/${dt.year}';
+  String _formatTimeAgo(DateTime date) {
+    final diff = DateTime.now().difference(date);
+    if (diff.inDays > 0) return '${diff.inDays}d ago';
+    if (diff.inHours > 0) return '${diff.inHours}h ago';
+    if (diff.inMinutes > 0) return '${diff.inMinutes}m ago';
+    return 'Just now';
   }
+}
 
-  Widget _statusChip(String? s) {
-    final label = _humanStatus(s);
+// ── Status Chip ─────────────────────────────────────
+class _StatusChip extends StatelessWidget {
+  final String? status;
+  const _StatusChip({this.status});
+
+  @override
+  Widget build(BuildContext context) {
+    final label = _ActivityItem(history: {}, listing: null, onTap: () {}). _humanStatus(status);
     Color color;
-    switch (s) {
-      case 'accepted':
-        color = Colors.green;
-        break;
-      case 'pending':
-        color = Colors.orange;
-        break;
-      default:
-        color = Colors.grey;
+    switch (status) {
+      case 'accepted': color = Colors.green; break;
+      case 'pending': color = Colors.orange; break;
+      default: color = Colors.grey;
     }
-  // use withAlpha to create a translucent version of the chosen color
-  final bg = color.withAlpha((0.15 * 255).round());
-    return Chip(label: Text(label), backgroundColor: bg);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color),
+      ),
+      child: Text(label, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w500)),
+    );
   }
+}
 
-  Widget _buildThumbnail(String? listingId) {
-    final li = listingId != null ? _listings[listingId] : null;
-    final url = li != null ? (li['imageUrl'] as String?) : null;
-    if (url != null && url.isNotEmpty) {
-      return SizedBox(width: 48, height: 48, child: ClipRRect(borderRadius: BorderRadius.circular(6), child: Image.network(url, fit: BoxFit.cover)));
-    }
-    return const SizedBox(width: 48, height: 48, child: CircleAvatar(child: Icon(Icons.book)));
+// ── Empty State ─────────────────────────────────────
+class _EmptyState extends StatelessWidget {
+  final String message;
+  final String lottie;
+  const _EmptyState({required this.message, required this.lottie});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        children: [
+          Image.asset(lottie, width: 120, height: 120),
+          const SizedBox(height: 16),
+          Text(message, style: const TextStyle(color: Colors.white70)),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Bottom Nav Bar ─────────────────────────────────────
+class _BottomNavBar extends StatelessWidget {
+  final int currentIndex;
+  const _BottomNavBar({required this.currentIndex});
+
+  @override
+  Widget build(BuildContext context) {
+    return BottomNavigationBar(
+      currentIndex: currentIndex,
+      backgroundColor: const Color(0xFF0F1724),
+      unselectedItemColor: Colors.white60,
+      selectedItemColor: const Color(0xFFF0B429),
+      type: BottomNavigationBarType.fixed,
+      items: const [
+        BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
+        BottomNavigationBarItem(icon: Icon(Icons.list_alt), label: 'My Listings'),
+        BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
+      ],
+      onTap: (i) {
+        if (i == 0) Navigator.of(context).popUntil((r) => r.isFirst);
+      },
+    );
   }
 }

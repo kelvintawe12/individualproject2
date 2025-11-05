@@ -37,6 +37,14 @@ class FirebaseService {
       if (kDebugMode) debugPrint('Firebase initialized (fallback to web options).');
     } catch (e) {
       if (kDebugMode) debugPrint('Firebase initialization failed: $e');
+      // Provide a helpful hint for common configuration issues (web/native config mismatch)
+      if (e.toString().contains('configuration-not-found') || e.toString().contains('DefaultFirebaseOptions')) {
+        debugPrint('Hint: configuration-not-found usually means your Firebase client config does not match a registered Firebase app.');
+        debugPrint(' - Verify lib/firebase_options.dart matches the Web app (apiKey, appId, projectId) in Firebase Console.');
+        debugPrint(' - Ensure Email/Password sign-in is enabled (Console → Authentication → Sign-in method).');
+        debugPrint(' - For web: ensure localhost is added to Authorized domains (Console → Authentication → Settings).');
+        debugPrint(' - You can (re)generate configuration using the FlutterFire CLI or the included script: scripts\\firebase_configure.ps1');
+      }
       rethrow;
     }
     // Post-initialization diagnostics helpful for debugging web/desktop issues.

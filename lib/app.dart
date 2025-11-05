@@ -64,16 +64,33 @@ class _BookSwapAppState extends State<BookSwapApp> {
             return const SignInScreen();
           }
           return Scaffold(
+            // Draw a solid dark background behind the navigation bar so it
+            // always appears as a dark footer (including the bottom safe area).
+            extendBody: false,
             body: SafeArea(child: _screens[_selectedIndex]),
-            bottomNavigationBar: BottomNavigationBar(
-              currentIndex: _selectedIndex,
-              onTap: _onItemTapped,
-              items: const [
-                BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Browse'),
-                BottomNavigationBarItem(icon: Icon(Icons.book), label: 'My Listings'),
-                BottomNavigationBarItem(icon: Icon(Icons.chat), label: 'Chats'),
-                BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Settings'),
-              ],
+            bottomNavigationBar: Container(
+              color: const Color(0xFF0F1724),
+              // Height includes bottom padding so the color extends into the
+              // system safe area (e.g. iPhone home indicator).
+              height: kBottomNavigationBarHeight + MediaQuery.of(context).padding.bottom,
+              child: SafeArea(
+                top: false,
+                child: BottomNavigationBar(
+                  type: BottomNavigationBarType.fixed,
+                  backgroundColor: Colors.transparent,
+                  elevation: 0,
+                  currentIndex: _selectedIndex,
+                  onTap: _onItemTapped,
+                  selectedItemColor: const Color(0xFFF0B429),
+                  unselectedItemColor: Colors.white38,
+                  items: const [
+                    BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Browse'),
+                    BottomNavigationBarItem(icon: Icon(Icons.book), label: 'My Listings'),
+                    BottomNavigationBarItem(icon: Icon(Icons.chat), label: 'Chats'),
+                    BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Settings'),
+                  ],
+                ),
+              ),
             ),
           );
         },

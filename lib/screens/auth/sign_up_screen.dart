@@ -27,10 +27,10 @@ class _SignUpScreenState extends State<SignUpScreen>
   late final AnimationController _cardCtrl;
   late final AnimationController _btnCtrl;
 
-  late final Animation<double> _logoFade;
-  late final Animation<double> _tagFade;
-  late final Animation<Offset> _cardSlide;
-  late final Animation<double> _btnScale;
+  Animation<double> _logoFade = const AlwaysStoppedAnimation<double>(1.0);
+  Animation<double> _tagFade = const AlwaysStoppedAnimation<double>(1.0);
+  Animation<Offset> _cardSlide = const AlwaysStoppedAnimation<Offset>(Offset.zero);
+  Animation<double> _btnScale = const AlwaysStoppedAnimation<double>(1.0);
 
   @override
   void initState() {
@@ -61,8 +61,14 @@ class _SignUpScreenState extends State<SignUpScreen>
         CurvedAnimation(parent: _btnCtrl, curve: Curves.easeInOut));
 
     // Staggered start
-    Future.delayed(const Duration(milliseconds: 200), () => _tagCtrl.forward());
-    Future.delayed(const Duration(milliseconds: 400), () => _cardCtrl.forward());
+    Future.delayed(const Duration(milliseconds: 200), () {
+      if (!mounted) return;
+      _tagCtrl.forward();
+    });
+    Future.delayed(const Duration(milliseconds: 400), () {
+      if (!mounted) return;
+      _cardCtrl.forward();
+    });
   }
 
   @override

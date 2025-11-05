@@ -46,8 +46,7 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
-    final isOwner = user != null && widget.listing != null && widget.listing!['ownerId'] == user.uid;
-    final hasRequestedSwap = false; // TODO: Check if user already requested swap for this listing
+  final isOwner = user != null && widget.listing != null && widget.listing!['ownerId'] == user.uid;
 
     return Scaffold(
       appBar: AppBar(
@@ -130,7 +129,7 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
                   width: 160,
                   height: 240,
                   decoration: BoxDecoration(borderRadius: BorderRadius.circular(8), color: Colors.grey[300]),
-                  child: ClipRRect(borderRadius: BorderRadius.circular(8), child: (widget.listing != null && widget.listing!['imageUrl'] != null) ? Image.network(widget.listing!['imageUrl'], fit: BoxFit.cover) : Image.asset('assets/placeholder.png', fit: BoxFit.cover)),
+                  child: ClipRRect(borderRadius: BorderRadius.circular(8), child: (widget.listing != null && widget.listing!['imageUrl'] != null) ? Image.network(widget.listing!['imageUrl'], fit: BoxFit.cover) : Image.asset('assets/bookOpen.png', fit: BoxFit.cover)),
                 ),
               ),
             ),

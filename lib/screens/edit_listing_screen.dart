@@ -2,7 +2,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/firebase_service.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 
 class EditListingScreen extends StatefulWidget {
   final Map<String, dynamic> listing;

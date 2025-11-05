@@ -1,33 +1,43 @@
 name: bookswap_demo
-description: A minimal BookSwap Flutter demo (mock data)
+description: A minimal BookSwap Flutter demo with premium UI/UX and Firebase backend.
 publish_to: 'none'
 version: 0.0.1
 
 environment:
-  sdk: '>=2.18.0 <3.0.0'
+  sdk: '>=3.0.0 <4.0.0'  # Updated for latest Flutter 3.19+
 
 dependencies:
   flutter:
     sdk: flutter
-  cupertino_icons: ^1.0.2
-  image_picker: ^0.8.7+3
-  lottie: ^2.4.0
-  # Firebase packages (used when integrating backend)
-  firebase_core: ^4.2.1
-  firebase_auth: ^6.1.2
-  cloud_firestore: ^6.1.0
-  firebase_storage: ^13.0.4
+  cupertino_icons: ^1.0.8
+
+  # UI & Animations
+  lottie: ^3.1.2
+  image_picker: ^1.1.2
+
+  # Firebase
+  firebase_core: ^3.6.0
+  firebase_auth: ^5.3.1
+  cloud_firestore: ^5.4.4
+  firebase_storage: ^12.3.4
+
+  # Utilities
   uuid: ^4.5.2
-  js: ^0.6.7
-  shared_preferences: ^2.2.0
+  shared_preferences: ^2.3.2
+  intl: ^0.19.0  # For time formatting (e.g., "3 days ago")
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^2.0.0
+  flutter_lints: ^3.0.0
 
 flutter:
   uses-material-design: true
+
   assets:
-    - assets/placeholder.png
+    # UI Backgrounds
     - ui/ui3.png
+    # Images
+    - assets/bookOpen.png
+    - assets/booksShelf.png
+    - assets/c.png
