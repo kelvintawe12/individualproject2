@@ -7,7 +7,7 @@ service cloud.firestore {
     function chatIsParticipant(chatId) {
       return isSignedIn()
         && exists(/databases/$(database)/documents/chats/$(chatId))
-        && (get(/databases/$(database)/documents/chats/$(chatId)).data.participants has request.auth.uid);
+        && (request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants);
     }
 
     // users collection: only the user themselves may create/update/delete their profile
