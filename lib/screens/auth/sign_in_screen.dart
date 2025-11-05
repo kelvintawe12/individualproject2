@@ -176,11 +176,15 @@ class _SignInScreenState extends State<SignInScreen>
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: LayoutBuilder(
                     builder: (context, constraints) {
+                      // Make the scrollable area keyboard-aware by taking viewInsets
+                      // into account so small overflows (2px) at the bottom are avoided
+                      // when the keyboard appears.
+                      final bottomInset = MediaQuery.of(context).viewInsets.bottom;
                       return SingleChildScrollView(
                         physics: const BouncingScrollPhysics(),
-                        padding: const EdgeInsets.only(top: 8, bottom: 8),
+                        padding: EdgeInsets.only(top: 8, bottom: bottomInset + 16),
                         child: ConstrainedBox(
-                          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                          constraints: BoxConstraints(minHeight: constraints.maxHeight - bottomInset),
                           child: IntrinsicHeight(
                             child: Column(
                               children: [

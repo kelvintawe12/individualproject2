@@ -311,14 +311,21 @@ class FirebaseService {
   /// Send a message to a chat. Adds a message doc under chats/{chatId}/messages
   /// and updates the chat doc's lastMessage/lastSentAt fields.
   static Future<void> sendMessage(String chatId, String senderId, {String? text, String? imageUrl}) async {
+    // Prevent sending entirely empty messages. Require at least text or an image.
+    final t = text?.trim() ?? '';
+    final i = imageUrl?.trim() ?? '';
+    if (t.isEmpty && i.isEmpty) {
+      throw ArgumentError('Cannot send empty message: provide text and/or imageUrl');
+    }
+
     final messagesRef = FirebaseFirestore.instance.collection('chats').doc(chatId).collection('messages');
     final payload = <String, dynamic>{
       'senderId': senderId,
-      'text': text ?? '',
-      'imageUrl': imageUrl ?? '',
+      'text': t,
+      'imageUrl': i,
       'createdAt': FieldValue.serverTimestamp(),
     };
-  await messagesRef.add(payload);
+    await messagesRef.add(payload);
     // Update chat metadata
     final chatRef = FirebaseFirestore.instance.collection('chats').doc(chatId);
     await chatRef.update({
@@ -367,7 +374,18 @@ class FirebaseService {
             debugPrint('[FirebaseService] Firestore listen error: $err');
             debugPrint('$st');
           }
-          // Emit an empty list so UI streams can recover gracefully.
+          // If the error is a permission denied error, forward it to listeners
+          // so UI can display a helpful message instead of silently showing
+          // an empty list. Otherwise emit an empty list as a fallback.
+          try {
+            if (err is FirebaseException && err.code == 'permission-denied') {
+              sink.addError(FirebaseException(
+                plugin: 'cloud_firestore',
+                message: 'Permission denied reading Firestore. Check rules and whether the user is signed in.',
+              ), st);
+              return;
+            }
+          } catch (_) {}
           try {
             sink.add([]);
           } catch (_) {}
