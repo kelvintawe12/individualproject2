@@ -1,4 +1,7 @@
 import 'dart:io';
+import 'dart:async';
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -20,6 +23,7 @@ class _PostScreenState extends State<PostScreen> with TickerProviderStateMixin {
   final _swapForCtrl = TextEditingController();
   String _condition = 'Like New';
   File? _imageFile;
+  Uint8List? _imageBytes; // for web
   double _uploadProgress = 0.0;
 
   final ImagePicker _picker = ImagePicker();
@@ -54,7 +58,18 @@ class _PostScreenState extends State<PostScreen> with TickerProviderStateMixin {
     try {
       final picked = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
       if (picked != null) {
-        setState(() => _imageFile = File(picked.path));
+        if (kIsWeb) {
+          final bytes = await picked.readAsBytes();
+          setState(() {
+            _imageBytes = bytes;
+            _imageFile = null;
+          });
+        } else {
+          setState(() {
+            _imageFile = File(picked.path);
+            _imageBytes = null;
+          });
+        }
       }
     } catch (e) {
       _showSnack('Image picker failed');
@@ -74,23 +89,39 @@ class _PostScreenState extends State<PostScreen> with TickerProviderStateMixin {
     );
     if (confirm != true) return;
 
-    // Show upload dialog
-    await showDialog<void>(
+    // Show upload dialog (use ValueNotifier so the dialog updates while upload runs)
+    final progressNotifier = ValueNotifier<double>(_uploadProgress);
+    // show dialog without awaiting so upload can proceed
+    showDialog<void>(
       barrierDismissible: false,
       context: context,
-      builder: (_) => _UploadProgressDialog(progress: _uploadProgress),
+      builder: (_) => ValueListenableBuilder<double>(
+        valueListenable: progressNotifier,
+        builder: (ctx, p, _) => _UploadProgressDialog(progress: p),
+      ),
     );
 
     try {
       String? imageUrl;
       if (_imageFile != null) {
-        imageUrl = await FirebaseService.uploadImage(_imageFile!, (p) {
-          setState(() => _uploadProgress = p);
-        });
+        debugPrint('[PostScreen] Starting image upload...');
+        try {
+          imageUrl = await FirebaseService.uploadImage(_imageFile!, (p) {
+            // update the notifier so the dialog reflects progress
+            progressNotifier.value = p;
+            debugPrint('[PostScreen] upload progress: ${(p * 100).toStringAsFixed(1)}%');
+          }).timeout(const Duration(seconds: 45), onTimeout: () {
+            throw TimeoutException('Image upload timed out after 45s');
+          });
+          debugPrint('[PostScreen] upload finished, imageUrl=$imageUrl');
+        } on TimeoutException catch (t) {
+          debugPrint('[PostScreen] upload timeout: $t');
+          rethrow;
+        }
       }
 
       final ownerId = FirebaseAuth.instance.currentUser?.uid ?? 'anonymous';
-      await FirebaseService.createListing({
+      final listingData = {
         'title': _titleCtrl.text.trim(),
         'author': _authorCtrl.text.trim(),
         'condition': _condition,
@@ -98,10 +129,18 @@ class _PostScreenState extends State<PostScreen> with TickerProviderStateMixin {
         'imageUrl': imageUrl,
         'ownerId': ownerId,
         'timestamp': DateTime.now(),
+      };
+      debugPrint('[PostScreen] creating listing with data: $listingData');
+      // create listing with timeout and logging
+      await FirebaseService.createListing(listingData).timeout(const Duration(seconds: 15), onTimeout: () {
+        throw TimeoutException('createListing timed out after 15s');
       });
+      debugPrint('[PostScreen] createListing succeeded');
 
-      if (!mounted) return;
-      Navigator.of(context).pop(); // close progress
+  if (!mounted) return;
+  // close progress dialog
+  Navigator.of(context).pop();
+  progressNotifier.dispose();
 
       await showDialog<void>(
         context: context,
@@ -114,7 +153,11 @@ class _PostScreenState extends State<PostScreen> with TickerProviderStateMixin {
       }
     } catch (e) {
       if (mounted) {
-        Navigator.of(context).pop();
+        // close progress dialog and show error
+        try {
+          Navigator.of(context).pop();
+        } catch (_) {}
+        progressNotifier.dispose();
         _showSnack('Failed to post: $e');
       }
     }
@@ -157,13 +200,14 @@ class _PostScreenState extends State<PostScreen> with TickerProviderStateMixin {
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             // Preview Card
-                            if (_titleCtrl.text.isNotEmpty || _imageFile != null)
+                            if (_titleCtrl.text.isNotEmpty || _imageFile != null || _imageBytes != null)
                               _BookPreviewCard(
                                 title: _titleCtrl.text,
                                 author: _authorCtrl.text,
                                 condition: _condition,
                                 swapFor: _swapForCtrl.text,
                                 imageFile: _imageFile,
+                                imageBytes: _imageBytes,
                               ),
                             const SizedBox(height: 16),
 
@@ -234,11 +278,13 @@ class _PostScreenState extends State<PostScreen> with TickerProviderStateMixin {
                                 Expanded(
                                   child: AnimatedSwitcher(
                                     duration: const Duration(milliseconds: 300),
-                                    child: _imageFile == null
+                                    child: (_imageBytes == null && _imageFile == null)
                                         ? const Text('No photo selected', style: TextStyle(color: Colors.white60))
                                         : ClipRRect(
                                             borderRadius: BorderRadius.circular(12),
-                                            child: Image.file(_imageFile!, height: 80, fit: BoxFit.cover, errorBuilder: (ctx, err, st) => Container(width: 80, height: 80, color: Colors.grey[800])),
+                                            child: _imageBytes != null
+                                                ? Image.memory(_imageBytes!, height: 80, fit: BoxFit.cover, errorBuilder: (ctx, err, st) => Container(width: 80, height: 80, color: Colors.grey[800]))
+                                                : Image.file(_imageFile!, height: 80, fit: BoxFit.cover, errorBuilder: (ctx, err, st) => Container(width: 80, height: 80, color: Colors.grey[800])),
                                           ),
                                   ),
                                 ),
@@ -330,6 +376,7 @@ class _BookPreviewCard extends StatelessWidget {
   final String condition;
   final String swapFor;
   final File? imageFile;
+  final Uint8List? imageBytes;
 
   const _BookPreviewCard({
     required this.title,
@@ -337,6 +384,7 @@ class _BookPreviewCard extends StatelessWidget {
     required this.condition,
     required this.swapFor,
     this.imageFile,
+    this.imageBytes,
   });
 
   @override
@@ -358,14 +406,16 @@ class _BookPreviewCard extends StatelessWidget {
               children: [
                 ClipRRect(
                   borderRadius: BorderRadius.circular(12),
-                  child: imageFile != null
-                      ? Image.file(imageFile!, width: 70, height: 90, fit: BoxFit.cover)
-                      : Container(
-                          width: 70,
-                          height: 90,
-                          color: Colors.grey[800],
-                          child: const Icon(Icons.book, color: Colors.white70, size: 32),
-                        ),
+                  child: imageBytes != null
+                      ? Image.memory(imageBytes!, width: 70, height: 90, fit: BoxFit.cover)
+                      : (imageFile != null
+                          ? Image.file(imageFile!, width: 70, height: 90, fit: BoxFit.cover)
+                          : Container(
+                              width: 70,
+                              height: 90,
+                              color: Colors.grey[800],
+                              child: const Icon(Icons.book, color: Colors.white70, size: 32),
+                            )),
                 ),
                 const SizedBox(width: 16),
                 Expanded(

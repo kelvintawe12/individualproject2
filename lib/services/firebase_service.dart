@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -109,6 +110,27 @@ class FirebaseService {
     return url;
   }
 
+  /// Upload raw image bytes (useful for web where File is not available).
+  static Future<String> uploadImageBytes(Uint8List bytes, Function(double)? onProgress) async {
+    final storage = FirebaseStorage.instance;
+    final id = const Uuid().v4();
+    final ref = storage.ref().child('listings').child('$id.jpg');
+
+    final metadata = SettableMetadata(contentType: 'image/jpeg');
+    final uploadTask = ref.putData(bytes, metadata);
+
+    uploadTask.snapshotEvents.listen((event) {
+      final bytesTransferred = event.bytesTransferred.toDouble();
+      final totalBytes = event.totalBytes.toDouble();
+      final progress = (totalBytes > 0) ? (bytesTransferred / totalBytes) : 0.0;
+      if (onProgress != null) onProgress(progress.clamp(0.0, 1.0));
+    });
+
+    final snap = await uploadTask;
+    final url = await snap.ref.getDownloadURL();
+    return url;
+  }
+
   /// Create a listing document in Firestore.
   static Future<void> createListing(Map<String, dynamic> data) async {
     final col = FirebaseFirestore.instance.collection('listings');
@@ -120,11 +142,7 @@ class FirebaseService {
   /// Example: listen to listings collection and call onData with documents.
   static Stream<List<Map<String, dynamic>>> listenListings() {
     final col = FirebaseFirestore.instance.collection('listings').orderBy('createdAt', descending: true);
-    return col.snapshots().map((snap) => snap.docs.map((d) {
-          final m = d.data();
-          m['id'] = d.id;
-          return m;
-        }).toList());
+    return _queryToListStream(col);
   }
 
   /// Create a swap offer document.
@@ -144,11 +162,7 @@ class FirebaseService {
   /// Listen to swaps for a specific listing.
   static Stream<List<Map<String, dynamic>>> listenSwapsForListing(String listingId) {
     final col = FirebaseFirestore.instance.collection('swaps').where('listingId', isEqualTo: listingId).orderBy('createdAt', descending: false);
-    return col.snapshots().map((snap) => snap.docs.map((d) {
-          final m = d.data();
-          m['id'] = d.id;
-          return m;
-        }).toList());
+    return _queryToListStream(col);
   }
 
   /// Accept a swap by setting status to 'accepted'.
@@ -267,11 +281,7 @@ class FirebaseService {
   /// Listen to listings for a specific user (ownerId == uid).
   static Stream<List<Map<String, dynamic>>> listenUserListings(String uid) {
     final col = FirebaseFirestore.instance.collection('listings').where('ownerId', isEqualTo: uid).orderBy('createdAt', descending: true);
-    return col.snapshots().map((snap) => snap.docs.map((d) {
-          final m = d.data();
-          m['id'] = d.id;
-          return m;
-        }).toList());
+    return _queryToListStream(col);
   }
 
   // ----------------- Chat / Messaging -----------------
@@ -321,21 +331,49 @@ class FirebaseService {
   /// Listen to messages for a chat ordered by createdAt ascending.
   static Stream<List<Map<String, dynamic>>> listenMessages(String chatId) {
     final ref = FirebaseFirestore.instance.collection('chats').doc(chatId).collection('messages').orderBy('createdAt', descending: false);
-    return ref.snapshots().map((snap) => snap.docs.map((d) {
-          final m = d.data();
-          m['id'] = d.id;
-          return m;
-        }).toList());
+    return _queryToListStream(ref);
   }
 
   /// Listen to chats for a user (where participants contains uid), ordered by lastSentAt desc.
   static Stream<List<Map<String, dynamic>>> listenChatsForUser(String uid) {
     final ref = FirebaseFirestore.instance.collection('chats').where('participants', arrayContains: uid).orderBy('lastSentAt', descending: true);
-    return ref.snapshots().map((snap) => snap.docs.map((d) {
-          final m = d.data();
-          m['id'] = d.id;
-          return m;
-        }).toList());
+    return _queryToListStream(ref);
+  }
+
+  /// Internal helper which converts a Firestore Query snapshots stream into
+  /// a Stream<List<Map<String,dynamic>>> with error handling and logging.
+  /// On listen errors (for example permissions or malformed requests) the
+  /// stream will emit an empty list and log the error to debug output so the
+  /// UI can continue to operate instead of crashing the app.
+  static Stream<List<Map<String, dynamic>>> _queryToListStream(Query query) {
+    // Use a StreamTransformer to catch errors and map QuerySnapshot -> List<Map>
+    return query.snapshots().transform(
+      StreamTransformer<QuerySnapshot<Map<String, dynamic>>, List<Map<String, dynamic>>>.fromHandlers(
+        handleData: (snap, sink) {
+          try {
+            final list = snap.docs.map((d) {
+              final m = Map<String, dynamic>.from(d.data());
+              m['id'] = d.id;
+              return m;
+            }).toList();
+            sink.add(list);
+          } catch (e, st) {
+            if (kDebugMode) debugPrint('[FirebaseService] snapshot->map error: $e\n$st');
+            sink.add([]);
+          }
+        },
+        handleError: (err, st, sink) {
+          if (kDebugMode) {
+            debugPrint('[FirebaseService] Firestore listen error: $err');
+            debugPrint('$st');
+          }
+          // Emit an empty list so UI streams can recover gracefully.
+          try {
+            sink.add([]);
+          } catch (_) {}
+        },
+      ),
+    );
   }
 
   /// Upload an image for chat (returns download URL).
