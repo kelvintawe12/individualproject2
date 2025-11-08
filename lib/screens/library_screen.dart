@@ -549,7 +549,9 @@ class _BottomNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return SafeArea(
+      top: false,
+      child: Container(
       decoration: const BoxDecoration(
         color: Color(0xFF0F1724),
         border: Border(top: BorderSide(color: Colors.white12, width: 1.2)),
@@ -592,6 +594,7 @@ class _BottomNavBar extends StatelessWidget {
           }
         },
       ),
-    );
+    ),
+  );
   }
 }

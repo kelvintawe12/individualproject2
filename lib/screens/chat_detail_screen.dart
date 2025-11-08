@@ -532,7 +532,9 @@ class _BottomNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BottomNavigationBar(
+    return SafeArea(
+      top: false,
+      child: BottomNavigationBar(
       currentIndex: currentIndex,
       backgroundColor: const Color(0xFF0F1724),
       unselectedItemColor: Colors.white60,
@@ -546,6 +548,7 @@ class _BottomNavBar extends StatelessWidget {
       onTap: (i) {
         if (i == 0) Navigator.of(context).popUntil((r) => r.isFirst);
       },
+      ),
     );
   }
 }

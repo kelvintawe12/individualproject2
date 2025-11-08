@@ -142,7 +142,7 @@ class _ListingsScreenState extends State<ListingsScreen>
                               try {
                                 final diag = await FirebaseService.getDiagnostics(
                                     queryDesc: 'listings');
-                                final payload = 'Error: $err\n\n$diag';
+                                final payload = 'Error: $err\\n\\n$diag';
                                 await Clipboard.setData(
                                     ClipboardData(text: payload));
                                 if (mounted) {
@@ -261,9 +261,19 @@ class _GlassListingCardState extends State<_GlassListingCard>
     final id = widget.listing['id'] as String?;
     if (uid == null || id == null || !mounted) return;
 
-    final exists = await LibraryService.isInLibrary(uid, id);
-    if (mounted) {
-      setState(() => _inLibrary = exists);
+    try {
+      final exists = await LibraryService.isInLibrary(uid, id);
+      if (mounted) {
+        setState(() => _inLibrary = exists);
+      }
+    } catch (e) {
+      // Permission errors or other firestore issues may throw here on web
+      // if security rules are not yet deployed. Fail gracefully and treat
+      // the item as not-in-library. We'll avoid surfacing the raw error
+      // to the layout engine which causes uncaught promise rejections.
+      if (mounted) {
+        setState(() => _inLibrary = false);
+      }
     }
   }
 
@@ -411,29 +421,39 @@ class _GlassListingCardState extends State<_GlassListingCard>
                   ),
                 ),
                 const SizedBox(width: 8),
-                _loading
-                    ? const SizedBox(
-                        width: 28,
-                        height: 28,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.5,
-                          valueColor:
-                              AlwaysStoppedAnimation(Color(0xFFF0B429)),
-                        ),
-                      )
-                    : IconButton(
-                        icon: AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 300),
-                          child: Icon(
-                            _inLibrary ? Icons.bookmark : Icons.bookmark_border,
-                            key: ValueKey(_inLibrary),
-                            color:
-                                _inLibrary ? const Color(0xFFF0B429) : Colors.white70,
-                            size: 28,
+                // Constrain trailing control to a fixed width so that if an
+                // ancestor provides a very small max width (web rendering
+                // oddities), the row's children won't attempt to overflow
+                // horizontally.
+                SizedBox(
+                  width: 48,
+                  child: Center(
+                    child: _loading
+                        ? const SizedBox(
+                            width: 28,
+                            height: 28,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.5,
+                              valueColor:
+                                  AlwaysStoppedAnimation(Color(0xFFF0B429)),
+                            ),
+                          )
+                        : IconButton(
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                            icon: AnimatedSwitcher(
+                              duration: Duration(milliseconds: 300),
+                              child: Icon(
+                                _inLibrary ? Icons.bookmark : Icons.bookmark_border,
+                                key: ValueKey(_inLibrary),
+                                color: _inLibrary ? const Color(0xFFF0B429) : Colors.white70,
+                                size: 28,
+                              ),
+                            ),
+                            onPressed: _toggleLibrary,
                           ),
-                        ),
-                        onPressed: _toggleLibrary,
-                      ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -556,28 +576,31 @@ class _BottomNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: Color(0xFF0F1724),
-        border: Border(top: BorderSide(color: Colors.white12, width: 1.2)),
-      ),
-      child: BottomNavigationBar(
-        currentIndex: currentIndex,
-        backgroundColor: Colors.transparent,
-        unselectedItemColor: Colors.white60,
-        selectedItemColor: const Color(0xFFF0B429),
-        type: BottomNavigationBarType.fixed,
-        selectedFontSize: 13,
-        unselectedFontSize: 12,
-        showUnselectedLabels: true,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home_rounded), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.list_alt_rounded), label: 'Listings'),
-          BottomNavigationBarItem(icon: Icon(Icons.chat_bubble_rounded), label: 'Chats'),
-        ],
-        onTap: (index) {
-          // Handle navigation
-        },
+    return SafeArea(
+      top: false,
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Color(0xFF0F1724),
+          border: Border(top: BorderSide(color: Colors.white12, width: 1.2)),
+        ),
+        child: BottomNavigationBar(
+          currentIndex: currentIndex,
+          backgroundColor: Colors.transparent,
+          unselectedItemColor: Colors.white60,
+          selectedItemColor: const Color(0xFFF0B429),
+          type: BottomNavigationBarType.fixed,
+          selectedFontSize: 13,
+          unselectedFontSize: 12,
+          showUnselectedLabels: true,
+          items: const <BottomNavigationBarItem>[
+            BottomNavigationBarItem(icon: Icon(Icons.home_rounded), label: 'Home'),
+            BottomNavigationBarItem(icon: Icon(Icons.list_alt_rounded), label: 'Listings'),
+            BottomNavigationBarItem(icon: Icon(Icons.chat_bubble_rounded), label: 'Chats'),
+          ],
+          onTap: (index) {
+            // Handle navigation
+          },
+        ),
       ),
     );
   }

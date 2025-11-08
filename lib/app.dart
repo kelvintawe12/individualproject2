@@ -18,7 +18,7 @@ class _BookSwapAppState extends State<BookSwapApp> {
   int _selectedIndex = 0;
 
   static final List<Widget> _screens = <Widget>[
-    const Center(child: Text('Browse')),
+    const ListingsScreen(),
     const MyListingsScreen(),
     const ChatsScreen(),
     const SettingsScreen(),
@@ -68,13 +68,13 @@ class _BookSwapAppState extends State<BookSwapApp> {
             // always appears as a dark footer (including the bottom safe area).
             extendBody: false,
             body: SafeArea(child: _screens[_selectedIndex]),
-            bottomNavigationBar: Container(
-              color: const Color(0xFF0F1724),
-              // Height includes bottom padding so the color extends into the
-              // system safe area (e.g. iPhone home indicator).
-              height: kBottomNavigationBarHeight + MediaQuery.of(context).padding.bottom,
-              child: SafeArea(
-                top: false,
+            // Wrap the BottomNavigationBar in a single SafeArea (top:false)
+            // and let the bar size itself. Avoid forcing a fixed height which
+            // can cause off-by-a-few-pixels overflow on some platforms.
+            bottomNavigationBar: SafeArea(
+              top: false,
+              child: Container(
+                color: const Color(0xFF0F1724),
                 child: BottomNavigationBar(
                   type: BottomNavigationBarType.fixed,
                   backgroundColor: Colors.transparent,
