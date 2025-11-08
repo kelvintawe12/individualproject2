@@ -13,7 +13,7 @@
       "collectionGroup": "chats",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "participants", "order": "ASCENDING" },
+        { "fieldPath": "participants", "arrayConfig": "CONTAINS" },
         { "fieldPath": "lastSentAt", "order": "DESCENDING" }
       ]
     }

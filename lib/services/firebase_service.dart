@@ -153,6 +153,7 @@ class FirebaseService {
   static Future<void> createListing(Map<String, dynamic> data) async {
     final col = FirebaseFirestore.instance.collection('listings');
     final payload = Map<String, dynamic>.from(data);
+    payload['type'] = payload['type'] ?? 'user'; // Default to 'user' if not specified
     payload['createdAt'] = FieldValue.serverTimestamp();
     await col.add(payload);
   }

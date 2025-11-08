@@ -199,6 +199,12 @@ class _MyListingsScreenState extends State<MyListingsScreen> with TickerProvider
                   onEdit: () {
                     Navigator.of(context).push(MaterialPageRoute(builder: (_) => EditListingScreen(listing: item)));
                   },
+                  onAddToLibrary: () {
+                    // TODO: Implement add to library functionality
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Add to Library not implemented yet')),
+                    );
+                  },
                 );
               },
             );
@@ -289,6 +295,7 @@ class _AnimatedListingCard extends StatelessWidget {
   final AnimationController controller;
   final VoidCallback onDelete;
   final VoidCallback onEdit;
+  final VoidCallback onAddToLibrary;
 
   const _AnimatedListingCard({
     required this.listing,
@@ -296,6 +303,7 @@ class _AnimatedListingCard extends StatelessWidget {
     required this.controller,
     required this.onDelete,
     required this.onEdit,
+    required this.onAddToLibrary,
   });
 
   @override
@@ -326,7 +334,7 @@ class _AnimatedListingCard extends StatelessWidget {
           child: const Icon(Icons.delete, color: Colors.white, size: 28),
         ),
         onDismissed: (_) => onDelete(),
-        child: _GlassListingCard(listing: listing, onEdit: onEdit),
+        child: _GlassListingCard(listing: listing, onEdit: onEdit, onAddToLibrary: onAddToLibrary),
       ),
     );
   }
@@ -336,8 +344,9 @@ class _AnimatedListingCard extends StatelessWidget {
 class _GlassListingCard extends StatelessWidget {
   final Map<String, dynamic> listing;
   final VoidCallback onEdit;
+  final VoidCallback onAddToLibrary;
 
-  const _GlassListingCard({required this.listing, required this.onEdit});
+  const _GlassListingCard({required this.listing, required this.onEdit, required this.onAddToLibrary});
 
   @override
   Widget build(BuildContext context) {
@@ -404,6 +413,13 @@ class _GlassListingCard extends StatelessWidget {
                 IconButton(
                   icon: const Icon(Icons.edit_outlined, color: Colors.white70),
                   onPressed: onEdit,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                ),
+                // Add to Library
+                IconButton(
+                  icon: const Icon(Icons.library_add, color: Colors.white70),
+                  onPressed: onAddToLibrary,
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
                 ),

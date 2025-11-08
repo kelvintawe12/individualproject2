@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/firebase_service.dart';
@@ -19,6 +21,7 @@ class _EditListingScreenState extends State<EditListingScreen> {
   late final TextEditingController _swapForCtrl;
   late String _condition;
   File? _imageFile;
+  Uint8List? _imageBytes;
   bool _loading = false;
 
   final ImagePicker _picker = ImagePicker();
@@ -44,7 +47,18 @@ class _EditListingScreenState extends State<EditListingScreen> {
     try {
       final XFile? picked = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 75);
       if (picked != null) {
-        setState(() => _imageFile = File(picked.path));
+        if (kIsWeb) {
+          final bytes = await picked.readAsBytes();
+          setState(() {
+            _imageBytes = bytes;
+            _imageFile = null;
+          });
+        } else {
+          setState(() {
+            _imageFile = File(picked.path);
+            _imageBytes = null;
+          });
+        }
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Image picker failed: $e')));
@@ -59,6 +73,8 @@ class _EditListingScreenState extends State<EditListingScreen> {
       String? imageUrl = widget.listing['imageUrl'];
       if (_imageFile != null) {
         imageUrl = await FirebaseService.uploadImage(_imageFile!, null);
+      } else if (_imageBytes != null) {
+        imageUrl = await FirebaseService.uploadImageBytes(_imageBytes!, null);
       }
 
       final updatedData = {
@@ -151,14 +167,16 @@ class _EditListingScreenState extends State<EditListingScreen> {
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 300),
-                      child: _imageFile != null
-                          ? ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.file(_imageFile!, height: 80, fit: BoxFit.cover))
-                          : (widget.listing['imageUrl'] != null)
-                              ? ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.network(widget.listing['imageUrl'], height: 80, fit: BoxFit.cover))
-                              : const Text('No image', style: TextStyle(color: Colors.grey)),
-                    ),
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 300),
+            child: _imageBytes != null
+              ? ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.memory(_imageBytes!, height: 80, fit: BoxFit.cover))
+              : (_imageFile != null
+                ? ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.file(_imageFile!, height: 80, fit: BoxFit.cover))
+                : (widget.listing['imageUrl'] != null)
+                  ? ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.network(widget.listing['imageUrl'], height: 80, fit: BoxFit.cover))
+                  : const Text('No image', style: TextStyle(color: Colors.grey))),
+          ),
                   )
                 ],
               ),

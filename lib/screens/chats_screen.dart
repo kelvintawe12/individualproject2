@@ -8,7 +8,7 @@ import 'package:flutter/services.dart';
 import 'chat_detail_screen.dart';
 
 class ChatsScreen extends StatelessWidget {
-  const ChatsScreen({Key? key}) : super(key: key);
+  const ChatsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {

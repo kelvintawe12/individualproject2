@@ -22,6 +22,7 @@ class _PostScreenState extends State<PostScreen> with TickerProviderStateMixin {
   final _authorCtrl = TextEditingController();
   final _swapForCtrl = TextEditingController();
   String _condition = 'Like New';
+  bool _isLibraryBook = false;
   File? _imageFile;
   Uint8List? _imageBytes; // for web
   double _uploadProgress = 0.0;
@@ -120,7 +121,7 @@ class _PostScreenState extends State<PostScreen> with TickerProviderStateMixin {
         }
       }
 
-      final ownerId = FirebaseAuth.instance.currentUser?.uid ?? 'anonymous';
+      final ownerId = _isLibraryBook ? 'library' : (FirebaseAuth.instance.currentUser?.uid ?? 'anonymous');
       final listingData = {
         'title': _titleCtrl.text.trim(),
         'author': _authorCtrl.text.trim(),
@@ -128,6 +129,7 @@ class _PostScreenState extends State<PostScreen> with TickerProviderStateMixin {
         'swapFor': _swapForCtrl.text.trim(),
         'imageUrl': imageUrl,
         'ownerId': ownerId,
+        'type': _isLibraryBook ? 'library' : 'user',
         'timestamp': DateTime.now(),
       };
       debugPrint('[PostScreen] creating listing with data: $listingData');
@@ -258,6 +260,20 @@ class _PostScreenState extends State<PostScreen> with TickerProviderStateMixin {
                                   ),
                                 );
                               }).toList(),
+                            ),
+                            const SizedBox(height: 16),
+
+                            // Library Book Toggle
+                            Row(
+                              children: [
+                                const Text('Post as Library Book', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                                const Spacer(),
+                                Switch(
+                                  value: _isLibraryBook,
+                                  onChanged: (value) => setState(() => _isLibraryBook = value),
+                                  activeColor: const Color(0xFFF0B429),
+                                ),
+                              ],
                             ),
                             const SizedBox(height: 16),
 

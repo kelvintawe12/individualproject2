@@ -9,6 +9,7 @@ import 'post_screen.dart';
 import 'package:flutter/services.dart';
 import '../services/firebase_service.dart';
 import 'profile_screen.dart';
+import 'library_screen.dart';
 
 class BrowseScreen extends StatefulWidget {
   const BrowseScreen({Key? key}) : super(key: key);
@@ -64,6 +65,13 @@ class _BrowseScreenState extends State<BrowseScreen> with TickerProviderStateMix
             icon: const Icon(Icons.person_outline),
             onPressed: () {
               Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ProfileScreen()));
+            },
+          ),
+          IconButton(
+            tooltip: 'Library',
+            icon: const Icon(Icons.library_books),
+            onPressed: () {
+              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LibraryScreen()));
             },
           ),
           IconButton(

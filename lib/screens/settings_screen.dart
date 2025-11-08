@@ -264,29 +264,136 @@ class _AboutDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      title: const Text('About BookSwap', textAlign: TextAlign.center),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Lottie.asset('assets/book_open.json', width: 100, height: 100),
-          const SizedBox(height: 16),
-          const Text(
-            'BookSwap helps students trade textbooks easily.\n\n'
-            'Swap, save, and study smarter.\n\n'
-            'Version 0.0.1 • Built with Flutter',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.white70),
+      backgroundColor: Colors.transparent,
+      child: BackdropFilter(
+        filter: ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          constraints: const BoxConstraints(maxWidth: 350),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                const Color(0xFF0F1724).withOpacity(0.95),
+                const Color(0xFF1E293B).withOpacity(0.9),
+              ],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+            ),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white.withOpacity(0.15)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.3),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
+              ),
+            ],
           ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Close', style: TextStyle(color: Color(0xFFF0B429))),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // App Icon or Logo
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0B429).withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.menu_book,
+                  color: Color(0xFFF0B429),
+                  size: 32,
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'About BookSwap',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Empowering Student Communities',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Color(0xFFF0B429),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 20),
+              Lottie.asset('assets/book_open.json', width: 120, height: 120),
+              const SizedBox(height: 20),
+              const Text(
+                'BookSwap is a revolutionary platform designed to help students trade textbooks effortlessly. Our mission is to make education more accessible and affordable by connecting learners worldwide.\n\n'
+                'Key Features:\n'
+                '• Seamless textbook trading\n'
+                '• Secure user authentication\n'
+                '• Real-time chat and notifications\n'
+                '• Community-driven marketplace\n\n'
+                'Join thousands of students who are already saving money and building connections through BookSwap!',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 14,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Text(
+                  'Version 0.0.1 • Built with Flutter',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white60,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Developed by BookSwap Team\n'
+                'For support: support@bookswap.com',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white54,
+                  fontSize: 12,
+                ),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: () => Navigator.of(context).pop(),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFF0B429),
+                  foregroundColor: Colors.black87,
+                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(25),
+                  ),
+                  elevation: 0,
+                ),
+                child: const Text(
+                  'Close',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
         ),
-      ],
+      ),
     );
   }
 }
