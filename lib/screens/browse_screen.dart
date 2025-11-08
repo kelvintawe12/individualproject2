@@ -297,7 +297,9 @@ class _ListingsScreenState extends State<ListingsScreen>
         elevation: 6,
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      bottomNavigationBar: const _BottomNavBar(currentIndex: 0),
+      // Bottom navigation is provided by the app shell (`app.dart`).
+      // Removing the local BottomNavigationBar to avoid a duplicated
+      // navigation bar when this screen is used inside the main Scaffold.
     );
   }
 
@@ -676,43 +678,6 @@ class _ConditionBadge extends StatelessWidget {
           fontSize: 12,
           fontWeight: FontWeight.w600,
           letterSpacing: 0.5,
-        ),
-      ),
-    );
-  }
-}
-
-// ── Bottom Navigation Bar (polished) ─────────────────────────────
-class _BottomNavBar extends StatelessWidget {
-  final int currentIndex;
-  const _BottomNavBar({required this.currentIndex});
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      top: false,
-      child: Container(
-        decoration: const BoxDecoration(
-          color: Color(0xFF0F1724),
-          border: Border(top: BorderSide(color: Colors.white12, width: 1.2)),
-        ),
-        child: BottomNavigationBar(
-          currentIndex: currentIndex,
-          backgroundColor: Colors.transparent,
-          unselectedItemColor: Colors.white60,
-          selectedItemColor: const Color(0xFFF0B429),
-          type: BottomNavigationBarType.fixed,
-          selectedFontSize: 13,
-          unselectedFontSize: 12,
-          showUnselectedLabels: true,
-          items: const <BottomNavigationBarItem>[
-            BottomNavigationBarItem(icon: Icon(Icons.home_rounded), label: 'Home'),
-            BottomNavigationBarItem(icon: Icon(Icons.list_alt_rounded), label: 'Listings'),
-            BottomNavigationBarItem(icon: Icon(Icons.chat_bubble_rounded), label: 'Chats'),
-          ],
-          onTap: (index) {
-            // Handle navigation
-          },
         ),
       ),
     );
