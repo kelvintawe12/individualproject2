@@ -224,40 +224,44 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
               ),
             ),
 
-            // Input (pad above keyboard)
-            Padding(
-              padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: const BoxDecoration(
-                  color: Color(0xFF0F1724),
-                  border: Border(top: BorderSide(color: Colors.white12)),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _GlassTextField(
-                        controller: _messageCtrl,
-                        hint: 'Message',
-                        onSubmitted: (_) => _sendMessage(),
+            // Input (pad above keyboard) - use SafeArea and a small extra bottom padding
+            SafeArea(
+              top: false,
+              child: Padding(
+                // Add a small extra padding to avoid tiny overflow artifacts
+                padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom + 8.0),
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF0F1724),
+                    border: Border(top: BorderSide(color: Colors.white12)),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _GlassTextField(
+                          controller: _messageCtrl,
+                          hint: 'Message',
+                          onSubmitted: (_) => _sendMessage(),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    if (_uploading)
-                      SizedBox(width: 36, height: 36, child: CircularProgressIndicator(value: _uploadProgress, color: const Color(0xFFF0B429)))
-                    else
-                      IconButton(
-                        icon: const Icon(Icons.attach_file, color: Colors.white70),
-                        onPressed: _sendImage,
+                      const SizedBox(width: 8),
+                      if (_uploading)
+                        SizedBox(width: 36, height: 36, child: CircularProgressIndicator(value: _uploadProgress, color: const Color(0xFFF0B429)))
+                      else
+                        IconButton(
+                          icon: const Icon(Icons.attach_file, color: Colors.white70),
+                          onPressed: _sendImage,
+                        ),
+                      const SizedBox(width: 8),
+                      FloatingActionButton(
+                        onPressed: _sendMessage,
+                        mini: true,
+                        backgroundColor: const Color(0xFFF0B429),
+                        child: const Icon(Icons.send, color: Colors.black87),
                       ),
-                    const SizedBox(width: 8),
-                    FloatingActionButton(
-                      onPressed: _sendMessage,
-                      mini: true,
-                      backgroundColor: const Color(0xFFF0B429),
-                      child: const Icon(Icons.send, color: Colors.black87),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
