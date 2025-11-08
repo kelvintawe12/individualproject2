@@ -41,11 +41,38 @@ class LibraryService {
 
   /// Listen to user's library listings with full listing data.
   static Stream<List<Map<String, dynamic>>> listenUserLibraryListings(String userId) {
+    // We must preserve the order of the user's library entries and also
+    // merge the library entry's `addedAt` timestamp into the listing map
+    // so UI code can show when the user added the listing to their library.
     return listenUserLibrary(userId).asyncMap((entries) async {
       final ids = entries.map((e) => e['listingId'] as String).toList();
       if (ids.isEmpty) return [];
       final listingsMap = await FirebaseService.getListingsByIds(ids);
-      return listingsMap.values.toList();
+
+      final List<Map<String, dynamic>> merged = [];
+      for (final entry in entries) {
+        final listingId = entry['listingId'] as String?;
+        if (listingId == null) continue;
+        final listing = listingsMap[listingId];
+        if (listing == null) {
+          // Listing was removed/deleted — skip it
+          continue;
+        }
+
+        // Create a shallow copy and inject the library `addedAt` as
+        // `timestamp` (UI expects `timestamp` to determine "time ago").
+        final mergedListing = Map<String, dynamic>.from(listing);
+        if (entry.containsKey('addedAt')) {
+          mergedListing['timestamp'] = entry['addedAt'];
+        } else if (!mergedListing.containsKey('timestamp') && mergedListing.containsKey('createdAt')) {
+          // Fallback to listing's createdAt if no addedAt present
+          mergedListing['timestamp'] = mergedListing['createdAt'];
+        }
+
+        merged.add(mergedListing);
+      }
+
+      return merged;
     });
   }
 }

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'screens/browse_screen.dart';
+import 'screens/browse_screen.dart' hide StreamBuilder;
 import 'screens/my_listings_screen.dart';
 import 'screens/chats_screen.dart';
 import 'screens/settings_screen.dart';
@@ -18,7 +18,7 @@ class _BookSwapAppState extends State<BookSwapApp> {
   int _selectedIndex = 0;
 
   static final List<Widget> _screens = <Widget>[
-    const BrowseScreen(),
+    const Center(child: Text('Browse')),
     const MyListingsScreen(),
     const ChatsScreen(),
     const SettingsScreen(),

@@ -3,7 +3,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:ui' as ui;
 import '../services/firebase_service.dart';
+import '../services/library_service.dart';
 import 'listing_detail_screen.dart';
+import 'edit_listing_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({Key? key}) : super(key: key);
@@ -62,6 +64,19 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  Widget _buildShimmer() {
+    return Column(
+      children: List.generate(3, (i) => Container(
+        margin: const EdgeInsets.symmetric(vertical: 8),
+        height: 120,
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(20),
+        ),
+      )),
+    );
   }
 
   @override
@@ -134,25 +149,58 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                   const Text('My Listings', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600)),
                   const SizedBox(height: 12),
 
-                  if (_loading)
-                    const Center(child: CircularProgressIndicator(color: Color(0xFFF0B429)))
-                  else if (_userListings.isEmpty)
-                    _EmptyState(message: 'No listings yet', lottie: 'assets/booksShelf.png')
-                  else
-                    SizedBox(
-                      height: 160,
-                      child: ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: _userListings.length,
-                        itemBuilder: (context, i) {
-                          return _AnimatedListingThumb(
-                            listing: _userListings[i],
-                            index: i,
-                            controller: _staggerController,
-                          );
-                        },
-                      ),
-                    ),
+                  StreamBuilder<List<Map<String, dynamic>>>(
+                    stream: FirebaseService.listenUserListings(user.uid),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return _buildShimmer();
+                      }
+                      if (snapshot.hasError) {
+                        return Center(
+                          child: Text('Failed to load listings: ${snapshot.error}', style: const TextStyle(color: Colors.white70)),
+                        );
+                      }
+                      final items = snapshot.data ?? [];
+                      if (items.isEmpty) {
+                        return _EmptyState(message: 'No listings yet', lottie: 'assets/booksShelf.png');
+                      }
+                      _staggerController.forward(from: 0);
+                      return SizedBox(
+                        height: 400,
+                        child: ListView.builder(
+                          shrinkWrap: true,
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                          itemCount: items.length,
+                          itemBuilder: (context, i) {
+                            final item = items[i];
+                            return _AnimatedListingCard(
+                              listing: item,
+                              index: i,
+                              controller: _staggerController,
+                              onDelete: () {}, // no delete in profile
+                              onEdit: () {
+                                Navigator.of(context).push(MaterialPageRoute(builder: (_) => EditListingScreen(listing: item)));
+                              },
+                              onAddToLibrary: () async {
+                                final user = FirebaseAuth.instance.currentUser;
+                                if (user == null) return;
+                                try {
+                                  await LibraryService.addToLibrary(user.uid, item['id'] as String);
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Added to Library')),
+                                  );
+                                } catch (e) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('Failed to add to library: $e')),
+                                  );
+                                }
+                              },
+                            );
+                          },
+                        ),
+                      );
+                    },
+                  ),
 
                   const SizedBox(height: 24),
 
@@ -255,90 +303,7 @@ class _StatItem extends StatelessWidget {
   }
 }
 
-// ── Animated Listing Thumb ─────────────────────────────────────
-class _AnimatedListingThumb extends StatelessWidget {
-  final Map<String, dynamic> listing;
-  final int index;
-  final AnimationController controller;
 
-  const _AnimatedListingThumb({required this.listing, required this.index, required this.controller});
-
-  @override
-  Widget build(BuildContext context) {
-    final animation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: controller,
-        curve: Interval(0.1 * (index % 4), 0.7 + 0.1 * (index % 4), curve: Curves.easeOut),
-      ),
-    );
-
-    return AnimatedBuilder(
-      animation: animation,
-      builder: (context, child) {
-        return Transform.translate(
-          offset: Offset(0, 50 * (1 - animation.value)),
-          child: Opacity(opacity: animation.value, child: child),
-        );
-      },
-      child: Container(
-        width: 140,
-        margin: const EdgeInsets.only(right: 12),
-        child: InkWell(
-          onTap: () {
-            Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => ListingDetailScreen(listing: listing),
-            ));
-          },
-          borderRadius: BorderRadius.circular(16),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: Stack(
-              children: [
-                (listing['imageUrl'] != null && (listing['imageUrl'] as String).isNotEmpty)
-                    ? Image.network(
-                        listing['imageUrl'],
-                        fit: BoxFit.cover,
-                        width: double.infinity,
-                        height: double.infinity,
-                        errorBuilder: (ctx, err, stack) => Image.asset('assets/bookOpen.png', fit: BoxFit.cover),
-                        loadingBuilder: (ctx, child, progress) {
-                          if (progress == null) return child;
-                          return Container(
-                            color: Colors.black12,
-                            child: const Center(child: CircularProgressIndicator()),
-                          );
-                        },
-                      )
-                    : Image.asset('assets/bookOpen.png', fit: BoxFit.cover),
-                Positioned(
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.bottomCenter,
-                        end: Alignment.topCenter,
-                        colors: [Colors.black.withOpacity(0.7), Colors.transparent],
-                      ),
-                    ),
-                    child: Text(
-                      listing['title'] ?? 'Untitled',
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 // ── Activity Item ─────────────────────────────────────
 class _ActivityItem extends StatelessWidget {
@@ -453,6 +418,195 @@ class _EmptyState extends StatelessWidget {
           const SizedBox(height: 16),
           Text(message, style: const TextStyle(color: Colors.white70)),
         ],
+      ),
+    );
+  }
+}
+
+// ── Shimmer Placeholder ─────────────────────────────────────
+class _ShimmerBox extends StatelessWidget {
+  final double width, height;
+  const _ShimmerBox({required this.width, required this.height});
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+    );
+  }
+}
+
+// ── Animated Card with Swipe ─────────────────────────────────────
+class _AnimatedListingCard extends StatelessWidget {
+  final Map<String, dynamic> listing;
+  final int index;
+  final AnimationController controller;
+  final VoidCallback onDelete;
+  final VoidCallback onEdit;
+  final VoidCallback onAddToLibrary;
+
+  const _AnimatedListingCard({
+    required this.listing,
+    required this.index,
+    required this.controller,
+    required this.onDelete,
+    required this.onEdit,
+    required this.onAddToLibrary,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final animation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: controller,
+        curve: Interval(0.1 * (index % 5), 0.6 + 0.1 * (index % 5), curve: Curves.easeOut),
+      ),
+    );
+
+    return AnimatedBuilder(
+      animation: animation,
+      builder: (context, child) {
+        return Transform.translate(
+          offset: Offset(0, 50 * (1 - animation.value)),
+          child: Opacity(opacity: animation.value, child: child),
+        );
+      },
+      child: _GlassListingCard(listing: listing, onEdit: onEdit, onAddToLibrary: onAddToLibrary),
+    );
+  }
+}
+
+// ── Glassmorphism Listing Card ─────────────────────────────────────
+class _GlassListingCard extends StatelessWidget {
+  final Map<String, dynamic> listing;
+  final VoidCallback onEdit;
+  final VoidCallback onAddToLibrary;
+
+  const _GlassListingCard({required this.listing, required this.onEdit, required this.onAddToLibrary});
+
+  @override
+  Widget build(BuildContext context) {
+    final title = listing['title'] ?? 'Untitled';
+    final author = listing['author'] ?? 'Unknown';
+    final condition = listing['condition'] ?? 'Used';
+    final imageUrl = listing['imageUrl'] as String?;
+    final rawTs = listing['timestamp'];
+    DateTime timestamp;
+    if (rawTs is Timestamp) {
+      timestamp = rawTs.toDate();
+    } else if (rawTs is DateTime) {
+      timestamp = rawTs;
+    } else {
+      timestamp = DateTime.now();
+    }
+    final timeAgo = _formatTimeAgo(timestamp);
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: BackdropFilter(
+          filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+            child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.white.withOpacity(0.1)),
+            ),
+            child: Row(
+              children: [
+                // Cover
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: imageUrl != null
+                      ? Image.network(imageUrl, width: 80, height: 110, fit: BoxFit.cover)
+                      : _placeholderCover(),
+                ),
+                const SizedBox(width: 16),
+
+                // Details
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title, style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w600), maxLines: 2, overflow: TextOverflow.ellipsis),
+                      const SizedBox(height: 4),
+                      Text(author, style: const TextStyle(color: Colors.white70, fontSize: 14)),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          _ConditionBadge(condition: condition),
+                          const SizedBox(width: 8),
+                          Text(timeAgo, style: const TextStyle(color: Colors.white60, fontSize: 13)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Edit (use compact padding and constraints to avoid tiny overflows)
+                IconButton(
+                  icon: const Icon(Icons.edit_outlined, color: Colors.white70),
+                  onPressed: onEdit,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                ),
+                // Add to Library
+                IconButton(
+                  icon: const Icon(Icons.library_add, color: Colors.white70),
+                  onPressed: onAddToLibrary,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _placeholderCover() {
+    return Container(
+      width: 80,
+      height: 110,
+      color: Colors.grey[800],
+      child: const Icon(Icons.book, color: Colors.white70, size: 36),
+    );
+  }
+
+  String _formatTimeAgo(DateTime date) {
+    final diff = DateTime.now().difference(date);
+    if (diff.inDays > 0) return '${diff.inDays}d ago';
+    if (diff.inHours > 0) return '${diff.inHours}h ago';
+    if (diff.inMinutes > 0) return '${diff.inMinutes}m ago';
+    return 'Just now';
+  }
+}
+
+// ── Condition Badge ─────────────────────────────────────
+class _ConditionBadge extends StatelessWidget {
+  final String condition;
+  const _ConditionBadge({required this.condition});
+
+  @override
+  Widget build(BuildContext context) {
+    final isNew = condition.toLowerCase().contains('new');
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: isNew ? Colors.green.withOpacity(0.2) : Colors.orange.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: isNew ? Colors.green : Colors.orange, width: 1),
+      ),
+      child: Text(
+        condition,
+        style: TextStyle(color: isNew ? Colors.green : Colors.orange, fontSize: 12, fontWeight: FontWeight.w500),
       ),
     );
   }

@@ -78,5 +78,26 @@ service cloud.firestore {
       allow update: if isSignedIn() && request.auth.uid == resource.data.ownerId;
       allow delete: if false;
     }
+
+    // LIBRARIES: per-user saved listings
+    // Document id format used in code: '{userId}_{listingId}'
+    match /libraries/{libId} {
+      // For single-doc reads ensure the document belongs to the signed-in user
+      allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
+
+      // For queries (list) require the client to filter by userId == auth.uid
+      // so that the server can verify the query only returns permitted docs.
+      allow list: if isSignedIn() && request.query.where('userId', '==', request.auth.uid);
+
+      // Creation: user must be signed-in and userId in the new doc must equal auth.uid
+      allow create: if isSignedIn() && request.auth.uid == request.resource.data.userId
+        && request.resource.data.listingId is string;
+
+      // Deletion: only the owner may remove their saved entry
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+
+      // No arbitrary updates allowed
+      allow update: if false;
+    }
   }
 }

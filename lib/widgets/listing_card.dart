@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../services/library_service.dart';
 import 'dart:ui' as ui; // Required for ImageFilter
 import '../screens/listing_detail_screen.dart';
 
@@ -25,12 +27,29 @@ class _ListingCardState extends State<ListingCard> with SingleTickerProviderStat
     );
     _scaleAnimation = CurvedAnimation(parent: _scaleController, curve: Curves.easeOut);
     _scaleController.value = 1.0;
+    // initialize library state
+    _initLibraryState();
   }
 
   @override
   void dispose() {
     _scaleController.dispose();
     super.dispose();
+  }
+
+  bool _inLibrary = false;
+  bool _libLoading = false;
+
+  Future<void> _initLibraryState() async {
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      final id = widget.listing['id']?.toString();
+      if (uid == null || id == null) return;
+      final exists = await LibraryService.isInLibrary(uid, id);
+      if (mounted) setState(() => _inLibrary = exists);
+    } catch (_) {
+      // ignore errors for initial state
+    }
   }
 
   void _onTapDown(TapDownDetails _) => _scaleController.reverse();
@@ -123,26 +142,71 @@ class _ListingCardState extends State<ListingCard> with SingleTickerProviderStat
                       ),
                     ),
 
-                    // Swap Button
-                    ElevatedButton(
-                      onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('Swap request sent for "$title"'),
+                    // Library / Swap Column
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Bookmark / Library toggle
+                        IconButton(
+                          icon: _libLoading
+                              ? SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white70))
+                              : Icon(_inLibrary ? Icons.bookmark : Icons.bookmark_border, color: _inLibrary ? const Color(0xFFF0B429) : Colors.white70),
+                          onPressed: () async {
+                            final uid = FirebaseAuth.instance.currentUser?.uid;
+                            final id = widget.listing['id']?.toString();
+                            if (uid == null) {
+                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sign in to save to your library')));
+                              return;
+                            }
+                            if (id == null) {
+                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Listing has no id')));
+                              return;
+                            }
+
+                            setState(() => _libLoading = true);
+                            try {
+                              if (!_inLibrary) {
+                                await LibraryService.addToLibrary(uid, id);
+                                if (mounted) setState(() => _inLibrary = true);
+                                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Added "$title" to your library'), backgroundColor: const Color(0xFFF0B429)));
+                              } else {
+                                await LibraryService.removeFromLibrary(uid, id);
+                                if (mounted) setState(() => _inLibrary = false);
+                                if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Removed from your library')));
+                              }
+                            } catch (e) {
+                              if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
+                            } finally {
+                              if (mounted) setState(() => _libLoading = false);
+                            }
+                          },
+                          tooltip: _inLibrary ? 'Remove from library' : 'Add to library',
+                        ),
+
+                        const SizedBox(height: 8),
+
+                        // Swap Button
+                        ElevatedButton(
+                          onPressed: () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Swap request sent for "$title"'),
+                                backgroundColor: const Color(0xFFF0B429),
+                                behavior: SnackBarBehavior.floating,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              ),
+                            );
+                          },
+                          style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFFF0B429),
-                            behavior: SnackBarBehavior.floating,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            foregroundColor: Colors.black87,
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            elevation: 0,
                           ),
-                        );
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFF0B429),
-                        foregroundColor: Colors.black87,
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                        elevation: 0,
-                      ),
-                      child: const Text('Swap', style: TextStyle(fontWeight: FontWeight.w600)),
+                          child: const Text('Swap', style: TextStyle(fontWeight: FontWeight.w600)),
+                        ),
+                      ],
                     ),
                   ],
                 ),

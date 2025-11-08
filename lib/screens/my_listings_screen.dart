@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:ui' as ui;
 import '../services/firebase_service.dart';
+import '../services/library_service.dart';
 import 'post_screen.dart';
 import 'edit_listing_screen.dart';
 
@@ -341,7 +342,7 @@ class _AnimatedListingCard extends StatelessWidget {
 }
 
 // ── Glassmorphism Listing Card ─────────────────────────────────────
-class _GlassListingCard extends StatelessWidget {
+class _GlassListingCard extends StatefulWidget {
   final Map<String, dynamic> listing;
   final VoidCallback onEdit;
   final VoidCallback onAddToLibrary;
@@ -349,7 +350,32 @@ class _GlassListingCard extends StatelessWidget {
   const _GlassListingCard({required this.listing, required this.onEdit, required this.onAddToLibrary});
 
   @override
+  State<_GlassListingCard> createState() => _GlassListingCardState();
+}
+
+class _GlassListingCardState extends State<_GlassListingCard> {
+  bool _inLibrary = false;
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _init();
+  }
+
+  Future<void> _init() async {
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      final id = widget.listing['id'] as String?;
+      if (uid == null || id == null) return;
+      final exists = await LibraryService.isInLibrary(uid, id);
+      if (mounted) setState(() => _inLibrary = exists);
+    } catch (_) {}
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final listing = widget.listing;
     final title = listing['title'] ?? 'Untitled';
     final author = listing['author'] ?? 'Unknown';
     final condition = listing['condition'] ?? 'Used';
@@ -412,14 +438,40 @@ class _GlassListingCard extends StatelessWidget {
                 // Edit (use compact padding and constraints to avoid tiny overflows)
                 IconButton(
                   icon: const Icon(Icons.edit_outlined, color: Colors.white70),
-                  onPressed: onEdit,
+                  onPressed: widget.onEdit,
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
                 ),
                 // Add to Library
                 IconButton(
-                  icon: const Icon(Icons.library_add, color: Colors.white70),
-                  onPressed: onAddToLibrary,
+                  icon: _loading
+                      ? SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white70))
+                      : Icon(_inLibrary ? Icons.bookmark : Icons.library_add, color: _inLibrary ? const Color(0xFFF0B429) : Colors.white70),
+                  onPressed: () async {
+                    final uid = FirebaseAuth.instance.currentUser?.uid;
+                    final id = widget.listing['id'] as String?;
+                    if (uid == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sign in to save to your library')));
+                      return;
+                    }
+                    if (id == null) return;
+                    setState(() => _loading = true);
+                    try {
+                      if (!_inLibrary) {
+                        await LibraryService.addToLibrary(uid, id);
+                        if (mounted) setState(() => _inLibrary = true);
+                        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Added "${title}" to your library'), backgroundColor: const Color(0xFFF0B429)));
+                      } else {
+                        await LibraryService.removeFromLibrary(uid, id);
+                        if (mounted) setState(() => _inLibrary = false);
+                        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Removed from your library')));
+                      }
+                    } catch (e) {
+                      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
+                    } finally {
+                      if (mounted) setState(() => _loading = false);
+                    }
+                  },
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
                 ),
@@ -439,14 +491,14 @@ class _GlassListingCard extends StatelessWidget {
       child: const Icon(Icons.book, color: Colors.white70, size: 36),
     );
   }
+}
 
-  String _formatTimeAgo(DateTime date) {
-    final diff = DateTime.now().difference(date);
-    if (diff.inDays > 0) return '${diff.inDays}d ago';
-    if (diff.inHours > 0) return '${diff.inHours}h ago';
-    if (diff.inMinutes > 0) return '${diff.inMinutes}m ago';
-    return 'Just now';
-  }
+String _formatTimeAgo(DateTime date) {
+  final diff = DateTime.now().difference(date);
+  if (diff.inDays > 0) return '${diff.inDays}d ago';
+  if (diff.inHours > 0) return '${diff.inHours}h ago';
+  if (diff.inMinutes > 0) return '${diff.inMinutes}m ago';
+  return 'Just now';
 }
 
 // ── Condition Badge ─────────────────────────────────────

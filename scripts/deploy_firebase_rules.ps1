@@ -49,13 +49,15 @@ if (-not (Check-CommandExists -cmd 'firebase')) {
 
 # Ensure we're in the repo root (where firebase.json exists) — best effort
 if (-not (Test-Path -Path './firebase.json')) {
-    Write-Warning "firebase.json not found in the current directory. Please `cd` to the repo root (where firebase.json is) and re-run this script."
+    Write-Warning 'firebase.json not found in the current directory. Please cd to the repo root (where firebase.json is) and re-run this script.'
     $ok = Read-Host "Continue anyway? (y/N)"
     if ($ok -notmatch '^[Yy]') { exit 1 }
 }
 
 Write-Host "Logging into Firebase (interactive). If you're already logged in this will just confirm your session."
-firebase login || { Write-Error "firebase login failed"; exit 1 }
+# Run firebase login and detect failure using PowerShell-compatible checks
+$loginResult = & firebase login
+if ($LASTEXITCODE -ne 0) { Write-Error "firebase login failed"; exit 1 }
 
 # Add or select project
 Write-Host "Setting project to $ProjectId (firebase use --add will prompt for an alias)."
@@ -63,7 +65,8 @@ Write-Host "Setting project to $ProjectId (firebase use --add will prompt for an
 $useResult = & firebase use $ProjectId 2>&1
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Project not registered locally — running 'firebase use --add $ProjectId' (you will be prompted to enter an alias)."
-    firebase use --add $ProjectId || { Write-Error "Failed to add or switch to project $ProjectId"; exit 1 }
+    $useAddResult = & firebase use --add $ProjectId 2>&1
+    if ($LASTEXITCODE -ne 0) { Write-Error "Failed to add or switch to project $ProjectId"; exit 1 }
 }
 
 # Deploy rules

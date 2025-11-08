@@ -1,145 +1,102 @@
 import 'dart:ui' as ui;
-
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/foundation.dart';
-import 'post_screen.dart';
-import 'package:flutter/services.dart';
-import '../services/firebase_service.dart';
-import 'profile_screen.dart';
-import 'library_screen.dart';
+import 'package:pull_to_refresh/pull_to_refresh.dart';
+import '../services/library_service.dart';
+import '../services/firebase_service.dart'; // Assuming this exists
+import 'post_screen.dart'; // Adjust path
 
-class BrowseScreen extends StatefulWidget {
-  const BrowseScreen({Key? key}) : super(key: key);
+class ListingsScreen extends StatefulWidget {
+  const ListingsScreen({Key? key}) : super(key: key);
 
   @override
-  State<BrowseScreen> createState() => _BrowseScreenState();
+  State<ListingsScreen> createState() => _ListingsScreenState();
 }
 
-class _BrowseScreenState extends State<BrowseScreen> with TickerProviderStateMixin {
+class _ListingsScreenState extends State<ListingsScreen>
+    with TickerProviderStateMixin {
   late final AnimationController _staggerController;
+  final RefreshController _refreshController =
+      RefreshController(initialRefresh: false);
 
   @override
   void initState() {
     super.initState();
-    _staggerController = AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
-    _staggerController.forward();
+    _staggerController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..forward();
   }
 
   @override
   void dispose() {
     _staggerController.dispose();
+    _refreshController.dispose();
     super.dispose();
+  }
+
+  Future<void> _onRefresh() async {
+    setState(() {}); // Trigger rebuild → StreamBuilder will reload
+    _refreshController.refreshCompleted();
+  }
+
+  Route _createPostRoute() {
+    return PageRouteBuilder(
+      pageBuilder: (context, animation, secondaryAnimation) => const PostScreen(),
+      transitionsBuilder: (context, animation, _, child) {
+        const begin = Offset(0.0, 1.0);
+        const end = Offset.zero;
+        final tween = Tween(begin: begin, end: end)
+            .chain(CurveTween(curve: Curves.easeOutCubic));
+        return SlideTransition(position: animation.drive(tween), child: child);
+      },
+      transitionDuration: const Duration(milliseconds: 450),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0F1724),
+      extendBody: true,
+      backgroundColor: const Color(0xFF0B121E),
       appBar: AppBar(
-        // Only show a back button when this screen was pushed onto the
-        // navigator stack. When BrowseScreen is the app's home/body (as in
-        // BookSwapApp) a back pop would leave a blank/white route — instead
-        // hide the leading widget.
-        leading: Navigator.canPop(context)
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
-                onPressed: () => Navigator.of(context).pop(),
-              )
-            : null,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
         title: const Text(
-          'Browse Listings',
+          'BookSwap',
           style: TextStyle(
-            fontWeight: FontWeight.w600,
-            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 24,
+            letterSpacing: 0.5,
           ),
         ),
-        backgroundColor: const Color(0xFF0F1724),
-        elevation: 0,
-        centerTitle: false,
         actions: [
           IconButton(
-            tooltip: 'Profile',
-            icon: const Icon(Icons.person_outline),
+            icon: const Icon(Icons.search_rounded),
             onPressed: () {
-              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ProfileScreen()));
+              // TODO: Navigate to search
             },
           ),
-          IconButton(
-            tooltip: 'Library',
-            icon: const Icon(Icons.library_books),
-            onPressed: () {
-              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LibraryScreen()));
-            },
-          ),
-          IconButton(
-            tooltip: 'Sign out',
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              final doSignOut = await showDialog<bool>(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  title: const Text('Sign out'),
-                  content: const Text('Are you sure you want to sign out?'),
-                  actions: [
-                    TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
-                    TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Sign out')),
-                  ],
-                ),
-              );
-              if (doSignOut == true) {
-                await FirebaseAuth.instance.signOut();
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Signed out')));
-              }
-            },
-          ),
-          // Developer debug button (visible only in debug builds)
-          if (kDebugMode)
-            IconButton(
-              tooltip: 'Dev info',
-              icon: const Icon(Icons.developer_mode, color: Colors.amberAccent),
-              onPressed: () async {
-                try {
-                  final uid = FirebaseAuth.instance.currentUser?.uid ?? 'null';
-                  final email = FirebaseAuth.instance.currentUser?.email ?? 'null';
-                  final apps = Firebase.apps.map((a) => a.name).join(', ');
-                  final active = Firebase.app();
-                  final opts = active.options;
-                  final info = StringBuffer();
-                  info.writeln('kIsWeb: $kIsWeb');
-                  info.writeln('Configured apps: $apps');
-                  info.writeln('Active app: ${active.name}');
-                  info.writeln('projectId: ${opts.projectId}');
-                  info.writeln('apiKey: ${opts.apiKey}');
-                  info.writeln('appId: ${opts.appId}');
-                  info.writeln('authDomain: ${opts.authDomain}');
-                  info.writeln('currentUser.uid: $uid');
-                  info.writeln('currentUser.email: $email');
-                  await showDialog<void>(
-                    context: context,
-                    builder: (ctx) => AlertDialog(
-                      title: const Text('Developer info'),
-                      content: SingleChildScrollView(child: SelectableText(info.toString(), style: const TextStyle(fontFamily: 'monospace'))),
-                      actions: [
-                        TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Close')),
-                      ],
-                    ),
-                  );
-                } catch (e) {
-                  await showDialog<void>(context: context, builder: (ctx) => AlertDialog(title: const Text('Error'), content: Text(e.toString()), actions: [TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Close'))]));
-                }
-              },
-            ),
         ],
       ),
-      body: StreamBuilder<List<Map<String, dynamic>>>(
-        stream: FirebaseService.listenListings(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
+      body: SmartRefresher(
+        controller: _refreshController,
+        onRefresh: _onRefresh,
+        header: const WaterDropHeader(
+          waterDropColor: Color(0xFFF0B429),
+        ),
+        child: StreamBuilder<List<Map<String, dynamic>>>(
+          stream: FirebaseService.listenListings(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting &&
+                snapshot.data == null) {
               return const Center(
-                child: CircularProgressIndicator(color: Color(0xFFF0B429)),
+                child: CircularProgressIndicator(
+                  color: Color(0xFFF0B429),
+                  strokeWidth: 2.5,
+                ),
               );
             }
 
@@ -147,37 +104,64 @@ class _BrowseScreenState extends State<BrowseScreen> with TickerProviderStateMix
               final err = snapshot.error;
               return Center(
                 child: Padding(
-                  padding: const EdgeInsets.all(16.0),
+                  padding: const EdgeInsets.all(24.0),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.lock_outline, color: Colors.redAccent, size: 56),
-                      const SizedBox(height: 12),
-                      Text('Could not load listings: $err', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70)),
-                      const SizedBox(height: 12),
+                      Icon(Icons.signal_wifi_connected_no_internet_4_rounded,
+                          color: Colors.redAccent.shade400, size: 64),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Connection failed',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              color: Colors.white70,
+                            ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '$err',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.white60),
+                      ),
+                      const SizedBox(height: 24),
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          ElevatedButton(
+                          ElevatedButton.icon(
                             onPressed: () => setState(() {}),
-                            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFF0B429)),
-                            child: const Text('Retry'),
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('Retry'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFF0B429),
+                              foregroundColor: Colors.black87,
+                            ),
                           ),
                           const SizedBox(width: 12),
-                          ElevatedButton.icon(
+                          OutlinedButton.icon(
                             onPressed: () async {
                               try {
-                                final diag = await FirebaseService.getDiagnostics(queryDesc: 'listings');
+                                final diag = await FirebaseService.getDiagnostics(
+                                    queryDesc: 'listings');
                                 final payload = 'Error: $err\n\n$diag';
-                                await Clipboard.setData(ClipboardData(text: payload));
-                                if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Diagnostics copied to clipboard')));
+                                await Clipboard.setData(
+                                    ClipboardData(text: payload));
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                        content: Text(
+                                            'Diagnostics copied to clipboard')),
+                                  );
+                                }
                               } catch (e) {
-                                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to copy diagnostics: $e')));
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('Failed: $e')),
+                                  );
+                                }
                               }
                             },
                             icon: const Icon(Icons.bug_report_outlined),
                             label: const Text('Report'),
-                            style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[800]),
                           ),
                         ],
                       ),
@@ -189,70 +173,311 @@ class _BrowseScreenState extends State<BrowseScreen> with TickerProviderStateMix
 
             final items = snapshot.data ?? [];
 
-          if (items.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Image.asset('assets/booksShelf.png', width: 200),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'No listings yet',
-                    style: TextStyle(color: Colors.white70, fontSize: 18),
+            if (items.isEmpty) {
+              return Center(
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Image.asset(
+                        'assets/booksShelf.png',
+                        width: 220,
+                        fit: BoxFit.contain,
+                      ),
+                      const SizedBox(height: 24),
+                      Text(
+                        'No books yet',
+                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                              color: Colors.white70,
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Be the first to post a listing!',
+                        style: TextStyle(color: Colors.white60, fontSize: 16),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            );
-          }
-
-          return ListView.builder(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
-            itemCount: items.length,
-            itemBuilder: (context, i) {
-              final item = items[i];
-              return _AnimatedListingCard(
-                listing: item,
-                index: i,
-                controller: _staggerController,
+                ),
               );
-            },
-          );
-        },
-      ),
+            }
 
+            return ListView.builder(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
+              itemCount: items.length,
+              itemBuilder: (context, i) {
+                return _AnimatedListingCard(
+                  listing: items[i],
+                  index: i,
+                  controller: _staggerController,
+                );
+              },
+            );
+          },
+        ),
+      ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          Navigator.of(context).push(_createPostRoute());
-        },
+        onPressed: () => Navigator.of(context).push(_createPostRoute()),
         label: const Text('Post', style: TextStyle(fontWeight: FontWeight.w600)),
         icon: const Icon(Icons.add),
         backgroundColor: const Color(0xFFF0B429),
         foregroundColor: Colors.black87,
-        elevation: 6,
+        elevation: 8,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-
-      bottomNavigationBar: _BottomNavBar(currentIndex: 0),
-    );
-  }
-
-  Route _createPostRoute() {
-    return PageRouteBuilder(
-      pageBuilder: (context, animation, secondaryAnimation) => const PostScreen(),
-      transitionsBuilder: (context, animation, secondaryAnimation, child) {
-        const begin = Offset(0.0, 1.0);
-        const end = Offset.zero;
-        const curve = Curves.easeOut;
-        var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
-        return SlideTransition(position: animation.drive(tween), child: child);
-      },
-      transitionDuration: const Duration(milliseconds: 400),
+      bottomNavigationBar: const _BottomNavBar(currentIndex: 0),
     );
   }
 }
 
-// ── Animated Card with Stagger ─────────────────────────────────────
+// ── Sophisticated Glass Card with Save Logic ─────────────────────
+class _GlassListingCard extends StatefulWidget {
+  final Map<String, dynamic> listing;
+  const _GlassListingCard({required this.listing});
+
+  @override
+  State<_GlassListingCard> createState() => _GlassListingCardState();
+}
+
+class _GlassListingCardState extends State<_GlassListingCard>
+    with AutomaticKeepAliveClientMixin {
+  late bool _inLibrary;
+  bool _loading = false;
+
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  void initState() {
+    super.initState();
+    _inLibrary = false;
+    _checkLibraryStatus();
+  }
+
+  Future<void> _checkLibraryStatus() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final id = widget.listing['id'] as String?;
+    if (uid == null || id == null || !mounted) return;
+
+    final exists = await LibraryService.isInLibrary(uid, id);
+    if (mounted) {
+      setState(() => _inLibrary = exists);
+    }
+  }
+
+  Future<void> _toggleLibrary() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final id = widget.listing['id'] as String?;
+    final title = widget.listing['title'] ?? 'Book';
+
+    if (uid == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please sign in to save books')),
+      );
+      return;
+    }
+    if (id == null) return;
+
+    HapticFeedback.mediumImpact();
+    setState(() => _loading = true);
+
+    try {
+      if (!_inLibrary) {
+        await LibraryService.addToLibrary(uid, id);
+        if (mounted) {
+          setState(() => _inLibrary = true);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Added "$title" to your library'),
+              backgroundColor: const Color(0xFFF0B429),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      } else {
+        await LibraryService.removeFromLibrary(uid, id);
+        if (mounted) {
+          setState(() => _inLibrary = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Removed from library'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    final listing = widget.listing;
+    final title = listing['title'] ?? 'Unknown';
+    final author = listing['author'] ?? 'Unknown';
+    final condition = listing['condition'] ?? 'Used';
+    final timestamp = (listing['timestamp'] as Timestamp?)?.toDate();
+    final imageUrl = listing['imageUrl'] as String?;
+
+    final timeAgo = timestamp != null ? _formatTimeAgo(timestamp) : 'Just now';
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 10),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: BackdropFilter(
+          filter: ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+          child: Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.09),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: Colors.white.withOpacity(0.15), width: 1.5),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.2),
+                  blurRadius: 20,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Hero(
+                  tag: 'book_${listing['id']}',
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(14),
+                    child: imageUrl != null
+                        ? Image.network(
+                            imageUrl,
+                            width: 90,
+                            height: 130,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => _placeholderCover(title),
+                          )
+                        : _placeholderCover(title),
+                  ),
+                ),
+                const SizedBox(width: 18),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          height: 1.2,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        author,
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 14.5,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          _ConditionBadge(condition: condition),
+                          const SizedBox(width: 10),
+                          Text(
+                            timeAgo,
+                            style: const TextStyle(
+                              color: Colors.white60,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                _loading
+                    ? const SizedBox(
+                        width: 28,
+                        height: 28,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          valueColor:
+                              AlwaysStoppedAnimation(Color(0xFFF0B429)),
+                        ),
+                      )
+                    : IconButton(
+                        icon: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 300),
+                          child: Icon(
+                            _inLibrary ? Icons.bookmark : Icons.bookmark_border,
+                            key: ValueKey(_inLibrary),
+                            color:
+                                _inLibrary ? const Color(0xFFF0B429) : Colors.white70,
+                            size: 28,
+                          ),
+                        ),
+                        onPressed: _toggleLibrary,
+                      ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _placeholderCover(String title) {
+    return Container(
+      width: 90,
+      height: 130,
+      color: Colors.grey[800],
+      child: Center(
+        child: Text(
+          title.isNotEmpty ? title[0].toUpperCase() : '?',
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 40,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _formatTimeAgo(DateTime date) {
+    final now = DateTime.now();
+    final diff = now.difference(date);
+
+    if (diff.inDays >= 30) {
+      return '${(diff.inDays / 30).floor()} mo ago';
+    } else if (diff.inDays > 0) {
+      return '${diff.inDays}d ago';
+    } else if (diff.inHours > 0) {
+      return '${diff.inHours}h ago';
+    } else if (diff.inMinutes > 0) {
+      return '${diff.inMinutes}m ago';
+    }
+    return 'now';
+  }
+}
+
+// ── Staggered Animation Wrapper ───────────────────────────────────
 class _AnimatedListingCard extends StatelessWidget {
   final Map<String, dynamic> listing;
   final int index;
@@ -270,9 +495,9 @@ class _AnimatedListingCard extends StatelessWidget {
       CurvedAnimation(
         parent: controller,
         curve: Interval(
-          0.1 * (index % 5),
-          0.6 + 0.1 * (index % 5),
-          curve: Curves.easeOut,
+          0.05 * (index % 8),
+          0.5 + 0.05 * (index % 8),
+          curve: Curves.easeOutCubic,
         ),
       ),
     );
@@ -281,8 +506,11 @@ class _AnimatedListingCard extends StatelessWidget {
       animation: animation,
       builder: (context, child) {
         return Transform.translate(
-          offset: Offset(0, 50 * (1 - animation.value)),
-          child: Opacity(opacity: animation.value, child: child),
+          offset: Offset(0, 80 * (1 - animation.value)),
+          child: Opacity(
+            opacity: animation.value,
+            child: child,
+          ),
         );
       },
       child: _GlassListingCard(listing: listing),
@@ -290,165 +518,38 @@ class _AnimatedListingCard extends StatelessWidget {
   }
 }
 
-// ── Glassmorphism Listing Card (matches screenshot) ─────────────────
-class _GlassListingCard extends StatelessWidget {
-  final Map<String, dynamic> listing;
-
-  const _GlassListingCard({required this.listing});
-
-  @override
-  Widget build(BuildContext context) {
-    final title = listing['title'] ?? 'Unknown';
-    final author = listing['author'] ?? 'Unknown';
-    final condition = listing['condition'] ?? 'Used';
-    final timestamp = (listing['timestamp'] as Timestamp?)?.toDate();
-    final imageUrl = listing['imageUrl'] as String?;
-
-    final timeAgo = timestamp != null
-        ? _formatTimeAgo(timestamp)
-        : 'Just now';
-
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 8),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: BackdropFilter(
-          filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.08),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.white.withOpacity(0.1)),
-            ),
-            child: Row(
-              children: [
-                // Book Cover
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: imageUrl != null
-                      ? Image.network(
-                          imageUrl,
-                          width: 80,
-                          height: 110,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => _placeholderCover(title),
-                        )
-                      : _placeholderCover(title),
-                ),
-                const SizedBox(width: 16),
-
-                // Details
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 17,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        author,
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 14,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          _ConditionBadge(condition: condition),
-                          const SizedBox(width: 8),
-                          Text(
-                            timeAgo,
-                            style: const TextStyle(
-                              color: Colors.white60,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Like Button
-                IconButton(
-                  icon: const Icon(Icons.bookmark_border, color: Colors.white70),
-                  onPressed: () {
-                    // TODO: Implement save
-                  },
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _placeholderCover(String title) {
-    return Container(
-      width: 80,
-      height: 110,
-      color: Colors.grey[800],
-      child: Center(
-        child: Text(
-          title.isNotEmpty ? title[0].toUpperCase() : '?',
-          style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold),
-        ),
-      ),
-    );
-  }
-
-  String _formatTimeAgo(DateTime date) {
-    final now = DateTime.now();
-    final diff = now.difference(date);
-    if (diff.inDays > 0) return '${diff.inDays} day${diff.inDays > 1 ? 's' : ''} ago';
-    if (diff.inHours > 0) return '${diff.inHours} hour${diff.inHours > 1 ? 's' : ''} ago';
-    if (diff.inMinutes > 0) return '${diff.inMinutes} min ago';
-    return 'Just now';
-  }
-}
-
-// ── Condition Badge ─────────────────────────────────────
+// ── Condition Badge (unchanged but polished) ─────────────────────
 class _ConditionBadge extends StatelessWidget {
   final String condition;
   const _ConditionBadge({required this.condition});
 
   @override
   Widget build(BuildContext context) {
-    final isLikeNew = condition.toLowerCase().contains('new');
+    final isNew = condition.toLowerCase().contains('new');
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: isLikeNew ? Colors.green.withOpacity(0.2) : Colors.orange.withOpacity(0.2),
+        color: isNew ? Colors.green.withOpacity(0.25) : Colors.amber.withOpacity(0.2),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: isLikeNew ? Colors.green : Colors.orange,
-          width: 1,
+          color: isNew ? Colors.green.shade400 : Colors.amber.shade600,
+          width: 1.2,
         ),
       ),
       child: Text(
         condition,
         style: TextStyle(
-          color: isLikeNew ? Colors.green : Colors.orange,
+          color: isNew ? Colors.green.shade300 : Colors.amber.shade300,
           fontSize: 12,
-          fontWeight: FontWeight.w500,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.5,
         ),
       ),
     );
   }
 }
 
-// ── Bottom Navigation Bar ─────────────────────────────────────
+// ── Bottom Navigation Bar (polished) ─────────────────────────────
 class _BottomNavBar extends StatelessWidget {
   final int currentIndex;
   const _BottomNavBar({required this.currentIndex});
@@ -458,7 +559,7 @@ class _BottomNavBar extends StatelessWidget {
     return Container(
       decoration: const BoxDecoration(
         color: Color(0xFF0F1724),
-        border: Border(top: BorderSide(color: Colors.white12, width: 1)),
+        border: Border(top: BorderSide(color: Colors.white12, width: 1.2)),
       ),
       child: BottomNavigationBar(
         currentIndex: currentIndex,
@@ -466,15 +567,16 @@ class _BottomNavBar extends StatelessWidget {
         unselectedItemColor: Colors.white60,
         selectedItemColor: const Color(0xFFF0B429),
         type: BottomNavigationBarType.fixed,
-        selectedFontSize: 12,
+        selectedFontSize: 13,
         unselectedFontSize: 12,
+        showUnselectedLabels: true,
         items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.list_alt), label: 'My Listings'),
-          BottomNavigationBarItem(icon: Icon(Icons.chat_bubble_outline), label: 'Chats'),
+          BottomNavigationBarItem(icon: Icon(Icons.home_rounded), label: 'Home'),
+          BottomNavigationBarItem(icon: Icon(Icons.list_alt_rounded), label: 'Listings'),
+          BottomNavigationBarItem(icon: Icon(Icons.chat_bubble_rounded), label: 'Chats'),
         ],
         onTap: (index) {
-          // TODO: Handle navigation
+          // Handle navigation
         },
       ),
     );
