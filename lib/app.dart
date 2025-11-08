@@ -7,6 +7,7 @@ import 'screens/settings_screen.dart';
 import 'screens/post_screen.dart';
 import 'screens/auth/sign_in_screen.dart';
 import 'screens/library_screen.dart';
+import 'screens/notifications_screen.dart';
 
 class BookSwapApp extends StatefulWidget {
   const BookSwapApp({Key? key}) : super(key: key);
@@ -22,6 +23,7 @@ class _BookSwapAppState extends State<BookSwapApp> {
     const ListingsScreen(),
     const MyListingsScreen(),
     const ChatsScreen(),
+    const NotificationsScreen(),
     const SettingsScreen(),
   ];
 
@@ -58,6 +60,7 @@ class _BookSwapAppState extends State<BookSwapApp> {
       routes: {
         '/post': (context) => const PostScreen(),
         '/library': (context) => const LibraryScreen(),
+        '/notifications': (context) => const NotificationsScreen(),
         '/chats': (context) => const ChatsScreen(),
       },
       home: StreamBuilder<User?>(
@@ -69,8 +72,17 @@ class _BookSwapAppState extends State<BookSwapApp> {
           return Scaffold(
             // Draw a solid dark background behind the navigation bar so it
             // always appears as a dark footer (including the bottom safe area).
-            extendBody: false,
-            body: SafeArea(child: _screens[_selectedIndex]),
+            // Use extendBody:true so floating action buttons can float over
+            // the navigation bar properly when child screens use a center docked FAB.
+            extendBody: true,
+            // Use IndexedStack to preserve each tab's state (scroll position,
+            // animation controllers, etc.) when switching tabs.
+            body: SafeArea(
+              child: IndexedStack(
+                index: _selectedIndex,
+                children: _screens,
+              ),
+            ),
             // Wrap the BottomNavigationBar in a single SafeArea (top:false)
             // and let the bar size itself. Avoid forcing a fixed height which
             // can cause off-by-a-few-pixels overflow on some platforms.
@@ -88,8 +100,9 @@ class _BookSwapAppState extends State<BookSwapApp> {
                   unselectedItemColor: Colors.white38,
                   items: const [
                     BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Browse'),
-                    BottomNavigationBarItem(icon: Icon(Icons.book), label: 'My Listings'),
+                    BottomNavigationBarItem(icon: Icon(Icons.library_books), label: 'My Listings'),
                     BottomNavigationBarItem(icon: Icon(Icons.chat), label: 'Chats'),
+                    BottomNavigationBarItem(icon: Icon(Icons.notifications), label: 'Notifications'),
                     BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Settings'),
                   ],
                 ),
