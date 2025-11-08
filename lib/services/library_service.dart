@@ -30,12 +30,19 @@ class LibraryService {
   /// Listen to user's library listings.
   static Stream<List<Map<String, dynamic>>> listenUserLibrary(String userId) {
     final col = FirebaseFirestore.instance.collection('libraries').where('userId', isEqualTo: userId).orderBy('addedAt', descending: true);
+    // Map QuerySnapshot -> List<Map> and log stream errors to console for easier debugging.
     return col.snapshots().map((snap) {
       return snap.docs.map((d) {
         final m = Map<String, dynamic>.from(d.data());
         m['id'] = d.id;
         return m;
       }).toList();
+    }).handleError((error, stack) {
+      // Firestore permission errors or other stream errors surface here.
+      if (kDebugMode) {
+        debugPrint('[LibraryService] listenUserLibrary stream error: $error');
+        debugPrint('[LibraryService] stack: $stack');
+      }
     });
   }
 
@@ -45,17 +52,41 @@ class LibraryService {
     // merge the library entry's `addedAt` timestamp into the listing map
     // so UI code can show when the user added the listing to their library.
     return listenUserLibrary(userId).asyncMap((entries) async {
-      final ids = entries.map((e) => e['listingId'] as String).toList();
-      if (ids.isEmpty) return [];
-      final listingsMap = await FirebaseService.getListingsByIds(ids);
+      if (kDebugMode) debugPrint('[LibraryService] received ${entries.length} library entries for user=$userId');
+
+      final ids = entries.map((e) => e['listingId'] as String).whereType<String>().toList();
+      if (ids.isEmpty) {
+        if (kDebugMode) debugPrint('[LibraryService] no listing ids found in library entries for user=$userId');
+        return <Map<String, dynamic>>[];
+      }
+
+      Map<String, Map<String, dynamic>> listingsMap;
+      try {
+        listingsMap = await FirebaseService.getListingsByIds(ids);
+      } catch (e, st) {
+        if (kDebugMode) {
+          debugPrint('[LibraryService] getListingsByIds failed for ids=${ids.join(',')}: $e');
+          debugPrint(st.toString());
+        }
+        // Propagate error so UI can show an error state, but also return
+        // an empty list as a fallback to keep the stream alive where
+        // appropriate. Here we choose to rethrow so the StreamBuilder
+        // receives the error and shows the message — this mirrors
+        // typical Firestore behavior for permission-denied.
+        rethrow;
+      }
 
       final List<Map<String, dynamic>> merged = [];
       for (final entry in entries) {
         final listingId = entry['listingId'] as String?;
-        if (listingId == null) continue;
+        if (listingId == null) {
+          if (kDebugMode) debugPrint('[LibraryService] skipping entry without listingId: $entry');
+          continue;
+        }
         final listing = listingsMap[listingId];
         if (listing == null) {
           // Listing was removed/deleted — skip it
+          if (kDebugMode) debugPrint('[LibraryService] listing not found (possibly deleted) listingId=$listingId');
           continue;
         }
 
@@ -72,7 +103,13 @@ class LibraryService {
         merged.add(mergedListing);
       }
 
+      if (kDebugMode) debugPrint('[LibraryService] returning ${merged.length} merged listings for user=$userId');
       return merged;
+    }).handleError((error, stack) {
+      if (kDebugMode) {
+        debugPrint('[LibraryService] listenUserLibraryListings stream error: $error');
+        debugPrint(stack.toString());
+      }
     });
   }
 }

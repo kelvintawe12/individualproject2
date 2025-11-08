@@ -92,13 +92,8 @@ class _LibraryScreenState extends State<LibraryScreen> with TickerProviderStateM
                 ],
               ),
             )
-          : StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('users')
-                  .doc(uid)
-                  .collection('library')
-                  .orderBy('addedAt', descending: true)
-                  .snapshots(),
+          : StreamBuilder<List<Map<String, dynamic>>>(
+              stream: LibraryService.listenUserLibraryListings(uid),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(
@@ -140,8 +135,8 @@ class _LibraryScreenState extends State<LibraryScreen> with TickerProviderStateM
                   );
                 }
 
-                final docs = snapshot.data!.docs;
-                if (docs.isEmpty) {
+                final listings = snapshot.data ?? [];
+                if (listings.isEmpty) {
                   return Center(
                     child: SingleChildScrollView(
                       child: Column(
@@ -177,13 +172,9 @@ class _LibraryScreenState extends State<LibraryScreen> with TickerProviderStateM
 
                 return ListView.builder(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
-                  itemCount: docs.length,
+                  itemCount: listings.length,
                   itemBuilder: (context, i) {
-                    final data = docs[i].data() as Map<String, dynamic>;
-                    final listing = {
-                      'id': docs[i].id,
-                      ...data,
-                    };
+                    final listing = Map<String, dynamic>.from(listings[i]);
                     return _AnimatedListingCard(
                       listing: listing,
                       index: i,
