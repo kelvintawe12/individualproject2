@@ -106,6 +106,17 @@ class _SignInScreenState extends State<SignInScreen>
         final uid = FirebaseAuth.instance.currentUser?.uid;
         if (kDebugMode) debugPrint('Signed in uid=$uid');
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Welcome back, $name! (uid=${uid ?? 'unknown'})')));
+        // Create a simple login notification for this user with last-login info.
+        try {
+          if (uid != null) {
+            await FirebaseService.createNotification(uid, 'login', {
+              'email': _emailCtrl.text.trim(),
+              'message': 'User signed in',
+            });
+          }
+        } catch (e) {
+          if (kDebugMode) debugPrint('Failed to create login notification: $e');
+        }
       }
     } on FirebaseAuthException catch (e) {
       final msg = e.message ?? e.code;

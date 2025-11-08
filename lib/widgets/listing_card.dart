@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/library_service.dart';
+import '../services/firebase_service.dart';
 import 'dart:ui' as ui; // Required for ImageFilter
 import '../screens/listing_detail_screen.dart';
 
@@ -185,17 +186,45 @@ class _ListingCardState extends State<ListingCard> with SingleTickerProviderStat
 
                         const SizedBox(height: 8),
 
-                        // Swap Button
+                        // Swap Button — create a real swap request and notification
                         ElevatedButton(
-                          onPressed: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Swap request sent for "$title"'),
-                                backgroundColor: const Color(0xFFF0B429),
-                                behavior: SnackBarBehavior.floating,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          onPressed: () async {
+                            final uid = FirebaseAuth.instance.currentUser?.uid;
+                            final listingId = widget.listing['id'] as String?;
+                            final ownerId = widget.listing['ownerId'] as String?;
+                            if (uid == null) {
+                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please sign in to request a swap')));
+                              return;
+                            }
+                            if (ownerId == uid) {
+                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('You cannot request your own listing')));
+                              return;
+                            }
+                            if (listingId == null) {
+                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Listing has no id')));
+                              return;
+                            }
+
+                            // Confirm
+                            final confirm = await showDialog<bool>(
+                              context: context,
+                              builder: (_) => AlertDialog(
+                                title: const Text('Request Swap'),
+                                content: Text('Send a swap request to the owner for "${title}"?'),
+                                actions: [
+                                  TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('No')),
+                                  ElevatedButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Yes')),
+                                ],
                               ),
                             );
+                            if (confirm != true) return;
+
+                            try {
+                              await FirebaseService.createSwap(listingId, uid, ownerId ?? '');
+                              if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Swap request sent for "$title"'), backgroundColor: const Color(0xFFF0B429)));
+                            } catch (e) {
+                              if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to send swap request: $e')));
+                            }
                           },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFFF0B429),

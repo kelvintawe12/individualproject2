@@ -59,9 +59,26 @@ class _BookSwapAppState extends State<BookSwapApp> {
       ),
       routes: {
         '/post': (context) => const PostScreen(),
-        '/library': (context) => const LibraryScreen(),
+        // When a top-level route requests a tab (e.g. '/chats' or '/library')
+        // we temporarily push a blank route which, on the next frame, tells
+        // the app shell to switch tabs and then immediately pops the blank
+        // route. This preserves the global BottomNavigationBar which lives
+        // in the app shell (IndexedStack).
+        '/library': (context) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            setState(() => _selectedIndex = 1); // My Listings / Library slot
+            Navigator.of(context).pop();
+          });
+          return const SizedBox.shrink();
+        },
         '/notifications': (context) => const NotificationsScreen(),
-        '/chats': (context) => const ChatsScreen(),
+        '/chats': (context) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            setState(() => _selectedIndex = 2); // Chats tab
+            Navigator.of(context).pop();
+          });
+          return const SizedBox.shrink();
+        },
       },
       home: StreamBuilder<User?>(
         stream: FirebaseAuth.instance.authStateChanges(),

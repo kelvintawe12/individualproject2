@@ -193,7 +193,6 @@ class _LibraryScreenState extends State<LibraryScreen> with TickerProviderStateM
                 );
               },
             ),
-      bottomNavigationBar: const _BottomNavBar(currentIndex: 3),
     );
   }
 }
@@ -535,61 +534,4 @@ class _ConditionBadge extends StatelessWidget {
   }
 }
 
-// ── Bottom Navigation Bar (4 tabs) ──────────────────────────────
-class _BottomNavBar extends StatelessWidget {
-  final int currentIndex;
-  const _BottomNavBar({required this.currentIndex});
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      top: false,
-      child: Container(
-      decoration: const BoxDecoration(
-        color: Color(0xFF0F1724),
-        border: Border(top: BorderSide(color: Colors.white12, width: 1.2)),
-      ),
-      child: BottomNavigationBar(
-        currentIndex: currentIndex,
-        backgroundColor: Colors.transparent,
-        unselectedItemColor: Colors.white60,
-        selectedItemColor: const Color(0xFFF0B429),
-        type: BottomNavigationBarType.fixed,
-        selectedFontSize: 13,
-        unselectedFontSize: 12,
-        showUnselectedLabels: true,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home_rounded), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.list_alt_rounded), label: 'My Listings'),
-          BottomNavigationBarItem(icon: Icon(Icons.chat_bubble_rounded), label: 'Chats'),
-          BottomNavigationBarItem(icon: Icon(Icons.library_books_rounded), label: 'Library'),
-        ],
-        onTap: (index) {
-          if (index == currentIndex) return;
-          switch (index) {
-            case 0:
-              Navigator.of(context).pushReplacement(
-                MaterialPageRoute(builder: (_) => const ListingsScreen()),
-              );
-              return;
-            case 1:
-              Navigator.of(context).pushReplacement(
-                MaterialPageRoute(builder: (_) => const MyListingsScreen()),
-              );
-              return;
-            case 2:
-              Navigator.of(context).pushReplacement(
-                MaterialPageRoute(builder: (_) => const ChatsScreen()),
-              );
-              return;
-            case 3:
-              return; // Already here
-            default:
-              return;
-          }
-        },
-      ),
-    ),
-  );
-  }
-}
+// (Bottom navigation handled globally in app shell)

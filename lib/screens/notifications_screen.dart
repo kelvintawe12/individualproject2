@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:lottie/lottie.dart';
 import 'dart:ui' as ui;
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/firebase_service.dart';
+import 'listing_detail_screen.dart';
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({Key? key}) : super(key: key);
 
@@ -9,29 +13,7 @@ class NotificationsScreen extends StatefulWidget {
 }
 
 class _NotificationsScreenState extends State<NotificationsScreen> with TickerProviderStateMixin {
-  final List<Map<String, dynamic>> _notifications = [
-    {
-      'icon': Icons.swap_horiz,
-      'title': 'Swap request accepted',
-      'subtitle': 'Your swap for "Data Structures & Algorithms" has been accepted!',
-      'time': '2h ago',
-      'unread': true,
-    },
-    {
-      'icon': Icons.message,
-      'title': 'New message',
-      'subtitle': 'Alice sent you a message about your listing.',
-      'time': '1d ago',
-      'unread': true,
-    },
-    {
-      'icon': Icons.book,
-      'title': 'Listing viewed',
-      'subtitle': 'Someone viewed your "Calculus Textbook" listing.',
-      'time': '3d ago',
-      'unread': false,
-    },
-  ];
+  // Notifications are loaded from Firestore per-user.
 
   late final AnimationController _staggerController;
 
@@ -48,20 +30,25 @@ class _NotificationsScreenState extends State<NotificationsScreen> with TickerPr
     super.dispose();
   }
 
-  void _markAsRead(int index) {
-    setState(() {
-      _notifications[index]['unread'] = false;
-    });
+  Future<void> _markAsReadById(String notificationId) async {
+    try {
+      await FirebaseService.markNotificationRead(notificationId);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to mark read: $e')));
+    }
   }
 
-  void _deleteNotification(int index) {
-    setState(() {
-      _notifications.removeAt(index);
-    });
+  Future<void> _deleteNotificationById(String notificationId) async {
+    try {
+      await FirebaseService.deleteNotification(notificationId);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to delete: $e')));
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
     return Scaffold(
       backgroundColor: const Color(0xFF0F1724),
       appBar: AppBar(
@@ -79,24 +66,164 @@ class _NotificationsScreenState extends State<NotificationsScreen> with TickerPr
       body: RefreshIndicator(
         onRefresh: () async {
           await Future.delayed(const Duration(seconds: 1));
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Refreshed!'), backgroundColor: Color(0xFFF0B429)),
-          );
+          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Refreshed!'), backgroundColor: Color(0xFFF0B429)));
         },
         color: const Color(0xFFF0B429),
-        child: _notifications.isEmpty
-            ? _EmptyState()
-            : ListView.builder(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
-                itemCount: _notifications.length,
-                itemBuilder: (context, i) {
-                  final notif = _notifications[i];
-                  return _AnimatedNotificationCard(
-                    notification: notif,
-                    index: i,
-                    controller: _staggerController,
-                    onTap: () => _markAsRead(i),
-                    onDelete: () => _deleteNotification(i),
+        child: uid == null
+            ? Center(child: Text('Sign in to see notifications', style: TextStyle(color: Colors.white70)))
+            : StreamBuilder<List<Map<String, dynamic>>>(
+                stream: FirebaseService.listenNotificationsForUser(uid),
+                builder: (context, snap) {
+                  if (snap.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+                  if (snap.hasError) return Center(child: Text('Failed to load notifications: ${snap.error}', style: const TextStyle(color: Colors.white70)));
+                  final items = snap.data ?? [];
+                  if (items.isEmpty) return _EmptyState();
+                  return ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+                    itemCount: items.length,
+                    itemBuilder: (context, i) {
+                      final doc = items[i];
+                      // Map backend notification to UI fields expected by the card
+                      final payload = Map<String, dynamic>.from(doc['payload'] ?? {});
+                      final type = doc['type'] as String? ?? 'generic';
+                      final read = doc['read'] as bool? ?? false;
+                      final createdAt = doc['createdAt'];
+                      String timeLabel = '';
+                      try {
+                        if (createdAt is Timestamp) {
+                          final dt = createdAt.toDate();
+                          final diff = DateTime.now().difference(dt);
+                          if (diff.inDays > 0) timeLabel = '${diff.inDays}d ago';
+                          else if (diff.inHours > 0) timeLabel = '${diff.inHours}h ago';
+                          else if (diff.inMinutes > 0) timeLabel = '${diff.inMinutes}m ago';
+                          else timeLabel = 'Just now';
+                        }
+                      } catch (_) {}
+
+                      String title = '';
+                      String subtitle = '';
+                      IconData icon = Icons.notifications;
+
+                      if (type == 'login') {
+                        icon = Icons.login;
+                        title = 'Signed in';
+                        subtitle = payload['email'] ?? payload['message'] ?? 'Recent sign-in';
+                      } else if (type == 'swap_request') {
+                        icon = Icons.swap_horiz;
+                        title = 'Swap request';
+                        subtitle = 'User ${payload['requesterId'] ?? ''} requested your listing';
+                      } else {
+                        title = payload['title'] ?? payload['message'] ?? 'Notification';
+                        subtitle = (payload['body'] ?? '').toString();
+                      }
+
+                      final uiNotif = {
+                        'id': doc['id'],
+                        'icon': icon,
+                        'title': title,
+                        'subtitle': subtitle,
+                        'time': timeLabel,
+                        'unread': !read,
+                      };
+
+                      // Build the notification card and optional actions (for owners)
+                      final widgetCard = _AnimatedNotificationCard(
+                        notification: uiNotif,
+                        index: i,
+                        controller: _staggerController,
+                        onTap: () async {
+                          final nid = doc['id'] as String;
+                          await _markAsReadById(nid);
+                          // Navigate to related listing if present
+                          if (type == 'swap_request' || type == 'swap_accepted') {
+                            final listingId = payload['listingId'] as String?;
+                            if (listingId != null && listingId.isNotEmpty) {
+                              try {
+                                final listing = await FirebaseService.getListingById(listingId);
+                                if (listing != null) {
+                                  if (!mounted) return;
+                                  Navigator.of(context).push(MaterialPageRoute(builder: (_) => ListingDetailScreen(listing: listing, heroTag: 'coverHero-${listingId}-${listing['title'] ?? ''}')));
+                                }
+                              } catch (e) {
+                                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to open listing: $e')));
+                              }
+                            }
+                          }
+                        },
+                        onDelete: () => _deleteNotificationById(doc['id'] as String),
+                      );
+
+                      // If this is a swap_request and the current user is the recipient (owner), show accept/reject actions inline.
+                      final isSwapRequest = type == 'swap_request';
+                      final swapId = payload['swapId'] as String?;
+
+                      if (!isSwapRequest || swapId == null) return widgetCard;
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          widgetCard,
+                          Padding(
+                            padding: const EdgeInsets.only(left: 16.0, right: 16.0, bottom: 8.0),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                OutlinedButton(
+                                  onPressed: () async {
+                                    final confirm = await showDialog<bool>(
+                                      context: context,
+                                      builder: (_) => AlertDialog(
+                                        title: const Text('Reject swap request'),
+                                        content: const Text('Are you sure you want to reject this swap request?'),
+                                        actions: [
+                                          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('No')),
+                                          ElevatedButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Yes')),
+                                        ],
+                                      ),
+                                    );
+                                    if (confirm != true) return;
+                                    try {
+                                      await FirebaseService.rejectSwap(swapId);
+                                      await _markAsReadById(doc['id'] as String);
+                                      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Swap request rejected')));
+                                    } catch (e) {
+                                      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to reject: $e')));
+                                    }
+                                  },
+                                  child: const Text('Reject'),
+                                ),
+                                const SizedBox(width: 8),
+                                ElevatedButton(
+                                  onPressed: () async {
+                                    final confirm = await showDialog<bool>(
+                                      context: context,
+                                      builder: (_) => AlertDialog(
+                                        title: const Text('Accept swap request'),
+                                        content: const Text('Accept this swap request and mark listing as exchanged?'),
+                                        actions: [
+                                          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('No')),
+                                          ElevatedButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Yes')),
+                                        ],
+                                      ),
+                                    );
+                                    if (confirm != true) return;
+                                    try {
+                                      await FirebaseService.acceptSwap(swapId);
+                                      await _markAsReadById(doc['id'] as String);
+                                      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Swap accepted')));
+                                    } catch (e) {
+                                      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to accept: $e')));
+                                    }
+                                  },
+                                  child: const Text('Accept'),
+                                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFF0B429)),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      );
+                    },
                   );
                 },
               ),

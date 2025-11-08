@@ -338,7 +338,6 @@ class _PostScreenState extends State<PostScreen> with TickerProviderStateMixin {
           ),
         ),
       ),
-      bottomNavigationBar: _BottomNavBar(currentIndex: 1),
     );
   }
 }
@@ -560,30 +559,4 @@ class _SuccessDialog extends StatelessWidget {
   }
 }
 
-// ── Bottom Nav Bar ─────────────────────────────────────
-class _BottomNavBar extends StatelessWidget {
-  final int currentIndex;
-  const _BottomNavBar({required this.currentIndex});
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      top: false,
-      child: BottomNavigationBar(
-      currentIndex: currentIndex,
-      backgroundColor: const Color(0xFF0F1724),
-      unselectedItemColor: Colors.white60,
-      selectedItemColor: const Color(0xFFF0B429),
-      type: BottomNavigationBarType.fixed,
-      items: const [
-        BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-        BottomNavigationBarItem(icon: Icon(Icons.post_add), label: 'Post'),
-        BottomNavigationBarItem(icon: Icon(Icons.chat), label: 'Chats'),
-      ],
-      onTap: (i) {
-        if (i == 0) Navigator.of(context).popUntil((r) => r.isFirst);
-      },
-      ),
-    );
-  }
-}
+// (Bottom navigation handled globally in app shell)

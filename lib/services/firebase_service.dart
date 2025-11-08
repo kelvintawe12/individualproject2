@@ -168,6 +168,23 @@ class FirebaseService {
   /// Returns the created document ID.
   static Future<String> createSwap(String listingId, String requesterId, String ownerId) async {
     final col = FirebaseFirestore.instance.collection('swaps');
+    // Deduplication: check for an existing pending swap by the same requester for the same listing
+    try {
+      final existing = await col
+          .where('listingId', isEqualTo: listingId)
+          .where('requesterId', isEqualTo: requesterId)
+          .where('status', isEqualTo: 'pending')
+          .limit(1)
+          .get();
+      if (existing.docs.isNotEmpty) {
+        // Return the existing pending swap id and avoid creating another notification
+        return existing.docs.first.id;
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('[FirebaseService] createSwap dedupe check failed: $e');
+      // Proceed to create swap if dedupe check fails
+    }
+
     final doc = await col.add({
       'listingId': listingId,
       'requesterId': requesterId,
@@ -175,7 +192,75 @@ class FirebaseService {
       'status': 'pending',
       'createdAt': FieldValue.serverTimestamp(),
     });
+
+    // Create a notification for the owner to inform them of the swap request.
+    try {
+      await createNotification(ownerId, 'swap_request', {
+        'swapId': doc.id,
+        'listingId': listingId,
+        'requesterId': requesterId,
+      });
+    } catch (e) {
+      if (kDebugMode) debugPrint('[FirebaseService] failed to create swap notification: $e');
+    }
+
     return doc.id;
+  }
+
+  /// Create a notification document for a recipient user.
+  /// Notification payload is a map with arbitrary keys specific to the type.
+  static Future<String> createNotification(String recipientId, String type, Map<String, dynamic> payload) async {
+    final col = FirebaseFirestore.instance.collection('notifications');
+    final doc = await col.add({
+      'recipientId': recipientId,
+      'type': type,
+      'payload': payload,
+      'read': false,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+    return doc.id;
+  }
+
+  /// Listen to notifications for a specific user, ordered by newest first.
+  static Stream<List<Map<String, dynamic>>> listenNotificationsForUser(String uid) {
+    final col = FirebaseFirestore.instance.collection('notifications').where('recipientId', isEqualTo: uid).orderBy('createdAt', descending: true);
+    return _queryToListStream(col);
+  }
+
+  /// Mark a notification as read.
+  static Future<void> markNotificationRead(String notificationId) async {
+    final ref = FirebaseFirestore.instance.collection('notifications').doc(notificationId);
+    await ref.update({'read': true, 'readAt': FieldValue.serverTimestamp()});
+  }
+
+  /// Delete a notification by id.
+  static Future<void> deleteNotification(String notificationId) async {
+    final ref = FirebaseFirestore.instance.collection('notifications').doc(notificationId);
+    await ref.delete();
+  }
+
+  /// Reject a swap request by setting status to 'rejected' and notify requester.
+  static Future<void> rejectSwap(String swapId) async {
+    final ref = FirebaseFirestore.instance.collection('swaps').doc(swapId);
+    await ref.update({'status': 'rejected', 'rejectedAt': FieldValue.serverTimestamp()});
+    try {
+      final snap = await ref.get();
+      if (snap.exists) {
+        final data = snap.data();
+        final requesterId = data?['requesterId'] as String?;
+        final ownerId = data?['ownerId'] as String?;
+        final listingId = data?['listingId'] as String?;
+        if (requesterId != null) {
+          await createNotification(requesterId, 'swap_rejected', {
+            'swapId': swapId,
+            'listingId': listingId,
+            'ownerId': ownerId,
+          });
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('[FirebaseService] failed to create swap_rejected notification: $e');
+    }
   }
 
   /// Listen to swaps for a specific listing.
@@ -188,6 +273,25 @@ class FirebaseService {
   static Future<void> acceptSwap(String swapId) async {
     final ref = FirebaseFirestore.instance.collection('swaps').doc(swapId);
     await ref.update({'status': 'accepted', 'acceptedAt': FieldValue.serverTimestamp()});
+    // Notify the requester that their swap was accepted.
+    try {
+      final snap = await ref.get();
+      if (snap.exists) {
+        final data = snap.data();
+        final requesterId = data?['requesterId'] as String?;
+        final listingId = data?['listingId'] as String?;
+        final ownerId = data?['ownerId'] as String?;
+        if (requesterId != null) {
+          await createNotification(requesterId, 'swap_accepted', {
+            'swapId': swapId,
+            'listingId': listingId,
+            'ownerId': ownerId,
+          });
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('[FirebaseService] failed to create swap_accepted notification: $e');
+    }
   }
 
   /// Get count of listings owned by a user.
