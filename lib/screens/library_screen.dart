@@ -156,7 +156,9 @@ class _LibraryScreenState extends State<LibraryScreen> with TickerProviderStateM
                           ),
                           const SizedBox(height: 24),
                           OutlinedButton.icon(
-                            onPressed: () => Navigator.of(context).pushReplacementNamed('/browse'),
+                            onPressed: () => Navigator.of(context).pushReplacement(
+                              MaterialPageRoute(builder: (_) => const ListingsScreen()),
+                            ),
                             icon: const Icon(Icons.explore),
                             label: const Text('Browse Books'),
                             style: OutlinedButton.styleFrom(
@@ -566,7 +568,9 @@ class _BottomNavBar extends StatelessWidget {
           if (index == currentIndex) return;
           switch (index) {
             case 0:
-              Navigator.of(context).pushReplacementNamed('/browse');
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(builder: (_) => const ListingsScreen()),
+              );
               return;
             case 1:
               Navigator.of(context).pushReplacement(

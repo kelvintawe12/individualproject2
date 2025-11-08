@@ -161,7 +161,6 @@ class _SettingsScreenState extends State<SettingsScreen> with TickerProviderStat
           ),
         ),
       ),
-      bottomNavigationBar: _BottomNavBar(currentIndex: 3),
     );
   }
 }
@@ -399,30 +398,7 @@ class _AboutDialog extends StatelessWidget {
 }
 
 // ── Bottom Navigation Bar ─────────────────────────────────────
-class _BottomNavBar extends StatelessWidget {
-  final int currentIndex;
-  const _BottomNavBar({required this.currentIndex});
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      top: false,
-      child: BottomNavigationBar(
-      currentIndex: currentIndex,
-      backgroundColor: const Color(0xFF0F1724),
-      unselectedItemColor: Colors.white60,
-      selectedItemColor: const Color(0xFFF0B429),
-      type: BottomNavigationBarType.fixed,
-      items: const [
-        BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-        BottomNavigationBarItem(icon: Icon(Icons.list_alt), label: 'Listings'),
-        BottomNavigationBarItem(icon: Icon(Icons.chat), label: 'Chats'),
-        BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Settings'),
-      ],
-      onTap: (i) {
-        if (i == 0) Navigator.of(context).popUntil((r) => r.isFirst);
-      },
-      ),
-    );
-  }
-}
+// SettingsScreen relies on the app's top-level BottomNavigationBar when
+// embedded in the main app scaffold. If you need a standalone bottom nav
+// when pushing SettingsScreen independently, consider wrapping the
+// pushed route with a Scaffold that provides its own BottomNavigationBar.
