@@ -6,6 +6,7 @@ import 'screens/chats_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/post_screen.dart';
 import 'screens/auth/sign_in_screen.dart';
+import 'screens/library_screen.dart';
 
 class BookSwapApp extends StatefulWidget {
   const BookSwapApp({Key? key}) : super(key: key);
@@ -56,6 +57,8 @@ class _BookSwapAppState extends State<BookSwapApp> {
       ),
       routes: {
         '/post': (context) => const PostScreen(),
+        '/library': (context) => const LibraryScreen(),
+        '/chats': (context) => const ChatsScreen(),
       },
       home: StreamBuilder<User?>(
         stream: FirebaseAuth.instance.authStateChanges(),

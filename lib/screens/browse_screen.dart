@@ -20,6 +20,8 @@ class _ListingsScreenState extends State<ListingsScreen>
   late final AnimationController _staggerController;
   final RefreshController _refreshController =
       RefreshController(initialRefresh: false);
+  String _selectedFilter = 'All';
+  final List<String> _filters = const ['All', 'New', 'Used', 'Free'];
 
   @override
   void initState() {
@@ -73,6 +75,20 @@ class _ListingsScreenState extends State<ListingsScreen>
           ),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.bookmark_outline),
+            tooltip: 'Library',
+            onPressed: () {
+              Navigator.of(context).pushNamed('/library');
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.chat_bubble_outline),
+            tooltip: 'Chats',
+            onPressed: () {
+              Navigator.of(context).pushNamed('/chats');
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.search_rounded),
             onPressed: () {
@@ -198,36 +214,128 @@ class _ListingsScreenState extends State<ListingsScreen>
                         style: TextStyle(color: Colors.white60, fontSize: 16),
                       ),
                     ],
-                  ),
+                    ),
                 ),
               );
             }
+            // Apply client-side filter (simple contains check on condition/title)
+            final filtered = items.where((m) {
+              if (_selectedFilter == 'All') return true;
+              final condition = (m['condition'] as String?)?.toLowerCase() ?? '';
+              final title = (m['title'] as String?)?.toLowerCase() ?? '';
+              final f = _selectedFilter.toLowerCase();
+              return condition.contains(f) || title.contains(f);
+            }).toList();
 
-            return ListView.builder(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
-              itemCount: items.length,
-              itemBuilder: (context, i) {
-                return _AnimatedListingCard(
-                  listing: items[i],
-                  index: i,
-                  controller: _staggerController,
-                );
-              },
+            // If filter yields nothing, show a friendly empty state.
+            if (filtered.isEmpty) {
+              return CustomScrollView(
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
+                      child: _buildFilterBar(),
+                    ),
+                  ),
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.search_off, size: 64, color: Colors.white24),
+                          const SizedBox(height: 12),
+                          Text(
+                            'No books match your filters',
+                            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                  color: Colors.white70,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                          ),
+                          const SizedBox(height: 8),
+                          const Text('Try a different filter or clear the selection.', style: TextStyle(color: Colors.white60)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            }
+
+            return CustomScrollView(
+              slivers: [
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
+                    child: _buildFilterBar(),
+                  ),
+                ),
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, i) => _AnimatedListingCard(
+                        listing: filtered[i],
+                        index: i,
+                        controller: _staggerController,
+                      ),
+                      childCount: filtered.length,
+                    ),
+                  ),
+                ),
+              ],
             );
           },
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: FloatingActionButton(
         onPressed: () => Navigator.of(context).push(_createPostRoute()),
-        label: const Text('Post', style: TextStyle(fontWeight: FontWeight.w600)),
-        icon: const Icon(Icons.add),
+        tooltip: 'Post',
+        child: const Icon(Icons.add),
         backgroundColor: const Color(0xFFF0B429),
         foregroundColor: Colors.black87,
-        elevation: 8,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        elevation: 6,
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
       bottomNavigationBar: const _BottomNavBar(currentIndex: 0),
+    );
+  }
+
+  Widget _buildFilterBar() {
+    return Row(
+      children: [
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.white10,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: _selectedFilter,
+                isExpanded: true,
+                dropdownColor: const Color(0xFF0B121E),
+                items: _filters.map((f) {
+                  return DropdownMenuItem(value: f, child: Text(f, style: const TextStyle(color: Colors.white)));
+                }).toList(),
+                onChanged: (v) {
+                  if (v == null) return;
+                  setState(() => _selectedFilter = v);
+                },
+                iconEnabledColor: Colors.white70,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        TextButton(
+          onPressed: () {
+            setState(() => _selectedFilter = 'All');
+          },
+          child: const Text('Clear', style: TextStyle(color: Colors.white70)),
+        ),
+      ],
     );
   }
 }
