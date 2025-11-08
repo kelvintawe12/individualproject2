@@ -408,11 +408,16 @@ class _GlassListingCardState extends State<_GlassListingCard>
                         children: [
                           _ConditionBadge(condition: condition),
                           const SizedBox(width: 10),
-                          Text(
-                            timeAgo,
-                            style: const TextStyle(
-                              color: Colors.white60,
-                              fontSize: 13,
+                          // Allow the time text to shrink/ellipsis so the Row
+                          // doesn't force an overflow when available width is small.
+                          Flexible(
+                            child: Text(
+                              timeAgo,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white60,
+                                fontSize: 13,
+                              ),
                             ),
                           ),
                         ],
