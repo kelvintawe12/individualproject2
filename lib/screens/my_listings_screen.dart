@@ -7,7 +7,7 @@ import 'post_screen.dart';
 import 'edit_listing_screen.dart';
 
 class MyListingsScreen extends StatefulWidget {
-  const MyListingsScreen({Key? key}) : super(key: key);
+  const MyListingsScreen({super.key});
   @override
   State<MyListingsScreen> createState() => _MyListingsScreenState();
 }
@@ -530,20 +530,30 @@ class _BottomNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BottomNavigationBar(
-      currentIndex: currentIndex,
-      backgroundColor: const Color(0xFF0F1724),
-      unselectedItemColor: Colors.white60,
-      selectedItemColor: const Color(0xFFF0B429),
-      type: BottomNavigationBarType.fixed,
-      items: const [
-        BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-        BottomNavigationBarItem(icon: Icon(Icons.list_alt), label: 'My Listings'),
-        BottomNavigationBarItem(icon: Icon(Icons.chat), label: 'Chats'),
-      ],
-      onTap: (i) {
-        if (i == 0) Navigator.of(context).popUntil((r) => r.isFirst);
-      },
+    return Container(
+      color: const Color(0xFF0F1724),
+      // Height includes bottom padding so the color extends into the
+      // system safe area (e.g. iPhone home indicator), adjusted by 8.0 pixels to fix overflow.
+      height: kBottomNavigationBarHeight + MediaQuery.of(context).padding.bottom + 8.0,
+      child: SafeArea(
+        top: false,
+        child: BottomNavigationBar(
+          type: BottomNavigationBarType.fixed,
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          currentIndex: currentIndex,
+          onTap: (i) {
+            if (i == 0) Navigator.of(context).popUntil((r) => r.isFirst);
+          },
+          selectedItemColor: const Color(0xFFF0B429),
+          unselectedItemColor: Colors.white38,
+          items: const [
+            BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
+            BottomNavigationBarItem(icon: Icon(Icons.list_alt), label: 'My Listings'),
+            BottomNavigationBarItem(icon: Icon(Icons.chat), label: 'Chats'),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -441,13 +441,22 @@ class FirebaseService {
   static Future<String> getOrCreateDirectChat(String uidA, String uidB) async {
     final id = _directChatId(uidA, uidB);
     final ref = FirebaseFirestore.instance.collection('chats').doc(id);
-    final snap = await ref.get();
-    if (!snap.exists) {
+    try {
+      // Try to create the chat document without performing a preliminary read.
+      // Using set() on a non-existent doc will create it and trigger the
+      // `create` rules. If the document already exists, set() may be treated
+      // as an update and fail due to rules; in that case we catch and return
+      // the deterministic id so callers can navigate to the existing chat.
       await ref.set({
         'participants': [uidA, uidB],
         'lastMessage': '',
         'lastSentAt': FieldValue.serverTimestamp(),
       });
+    } catch (e) {
+      // If creation failed due to insufficient permissions because the doc
+      // already exists or other rule constraints, return the id anyway so
+      // the UI can navigate to the chat which may already exist.
+      if (kDebugMode) debugPrint('[FirebaseService] getOrCreateDirectChat set() failed: $e');
     }
     return ref.id;
   }
@@ -588,6 +597,28 @@ class FirebaseService {
     final snap = await uploadTask;
     final url = await snap.ref.getDownloadURL();
     return url;
+  }
+
+  /// Listen to all users, ordered by createdAt desc.
+  static Stream<List<Map<String, dynamic>>> listenAllUsers() {
+    final col = FirebaseFirestore.instance.collection('users').orderBy('createdAt', descending: true);
+    return _queryToListStream(col);
+  }
+
+  /// Create a chat access request document so a user can request permission
+  /// to join or view a chat. This is a lightweight helper that client code
+  /// can call when reads are forbidden by security rules.
+  /// Returns the created request document ID.
+  static Future<String> requestChatAccess(String chatId, String requesterId, String targetId) async {
+    final col = FirebaseFirestore.instance.collection('chat_requests');
+    final doc = await col.add({
+      'chatId': chatId,
+      'requesterId': requesterId,
+      'targetId': targetId,
+      'status': 'pending',
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+    return doc.id;
   }
 
   /// Return a human-readable diagnostics string useful for reporting listen

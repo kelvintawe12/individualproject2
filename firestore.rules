@@ -39,8 +39,16 @@ service cloud.firestore {
       allow read: if isSignedIn() && (request.auth.uid in resource.data.participants);
       // creation of a chat requires the creator to be a participant
       allow create: if isSignedIn() && request.resource.data.participants is list && request.auth.uid in request.resource.data.participants;
-      // no direct updates/deletes of the chat document in this rule set (you can adjust as needed)
-      allow update, delete: if false;
+
+      // Allow only chat metadata updates by participants (clients update lastMessage/lastSentAt)
+      // This prevents arbitrary updates while allowing the client to update the chat's last message metadata.
+      allow update: if isSignedIn()
+                    && (request.auth.uid in resource.data.participants)
+                    // Ensure only the allowed keys are being changed by the request
+                    && request.resource.data.keys().hasOnly(['lastMessage', 'lastSentAt']);
+
+      // Prevent deletion of chats from client SDKs
+      allow delete: if false;
 
       // messages subcollection
       match /messages/{messageId} {
@@ -56,5 +64,14 @@ service cloud.firestore {
     }
 
     // Default: deny everything else
+    // chat_requests: allow users to create access requests to ask another user
+    // to grant them access to a chat. Creation is permitted when the
+    // authenticated uid matches the requesterId field.
+    match /chat_requests/{reqId} {
+      allow create: if isSignedIn() && request.auth.uid == request.resource.data.requesterId;
+      // allow the requester and the target to read their own requests
+      allow read: if isSignedIn() && (request.auth.uid == resource.data.requesterId || request.auth.uid == resource.data.targetId);
+      allow update, delete: if false;
+    }
   }
 }

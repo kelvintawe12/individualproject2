@@ -11,8 +11,9 @@ import 'package:flutter/services.dart';
 class ChatDetailScreen extends StatefulWidget {
   final String chatId;
   final String otherUserName;
+  final String? otherUserId;
 
-  const ChatDetailScreen({Key? key, required this.chatId, required this.otherUserName}) : super(key: key);
+  const ChatDetailScreen({Key? key, required this.chatId, required this.otherUserName, this.otherUserId}) : super(key: key);
 
   @override
   State<ChatDetailScreen> createState() => _ChatDetailScreenState();
@@ -95,6 +96,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       backgroundColor: const Color(0xFF0F1724),
       appBar: AppBar(
         backgroundColor: const Color(0xFF0F1724),
@@ -108,28 +110,36 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           onPressed: () => Navigator.of(context).pop(),
         ),
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: StreamBuilder<List<Map<String, dynamic>>>(
-              stream: FirebaseService.listenMessages(widget.chatId),
-              builder: (context, snap) {
-                if (snap.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
+      body: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              child: StreamBuilder<List<Map<String, dynamic>>>(
+                stream: FirebaseService.listenMessages(widget.chatId),
+                builder: (context, snap) {
+                  if (snap.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
                   // Surface listen errors (permission denied etc.) so the user
                   // sees a helpful message instead of a blank chat view.
                   if (snap.hasError) {
                     final err = snap.error;
+                    final isPermDenied = err != null && err.toString().contains('permission-denied');
                     return Center(
                       child: Padding(
                         padding: const EdgeInsets.all(16.0),
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.lock_outline, color: Colors.redAccent, size: 56),
+                            Icon(isPermDenied ? Icons.lock_outline : Icons.error_outline, color: Colors.redAccent, size: 56),
                             const SizedBox(height: 12),
-                            Text('Could not load messages: $err', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70)),
+                            Text(
+                              isPermDenied
+                                  ? 'You do not have permission to view this chat.'
+                                  : 'Could not load messages: $err',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(color: Colors.white70),
+                            ),
                             const SizedBox(height: 12),
                             Row(
                               mainAxisSize: MainAxisSize.min,
@@ -155,6 +165,27 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                                   label: const Text('Report'),
                                   style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[800]),
                                 ),
+                                if (isPermDenied && widget.otherUserId != null) ...[
+                                  const SizedBox(width: 12),
+                                  ElevatedButton.icon(
+                                    onPressed: () async {
+                                      final requesterId = FirebaseAuth.instance.currentUser?.uid;
+                                      if (requesterId == null) {
+                                        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sign in to request access')));
+                                        return;
+                                      }
+                                        try {
+                                          await FirebaseService.requestChatAccess(widget.chatId, requesterId, widget.otherUserId!);
+                                          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Access request sent')));
+                                        } catch (e) {
+                                        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to send request: $e')));
+                                      }
+                                    },
+                                    icon: const Icon(Icons.person_add_alt_1_outlined),
+                                    label: const Text('Request access'),
+                                    style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                                  ),
+                                ],
                               ],
                             ),
                           ],
@@ -162,72 +193,76 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                       ),
                     );
                   }
-                final msgs = snap.data ?? [];
-                return ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: msgs.length,
-                  itemBuilder: (context, i) {
-                    final m = msgs[i];
-                    final senderId = m['senderId'] as String? ?? '';
-                    final isMe = senderId == FirebaseAuth.instance.currentUser?.uid;
-                    final created = m['createdAt'];
-                    String timeLabel;
-                    if (created is Timestamp) {
-                      final dt = created.toDate();
-                      timeLabel = TimeOfDay.fromDateTime(dt).format(context);
-                    } else {
-                      timeLabel = TimeOfDay.now().format(context);
-                    }
-                    // Show a date header when the previous message has a different day
-                    final showDate = i == 0 || !_sameDay(msgs[i - 1]['createdAt'], m['createdAt']);
-                    return Column(
-                      children: [
-                        if (showDate)
-                          _DateHeader(date: _formatDateLabel(m['createdAt'])),
-                        _MessageBubble(text: (m['text'] ?? '') as String, isMe: isMe, time: timeLabel),
-                      ],
-                    );
-                  },
-                );
-              },
+                  final msgs = snap.data ?? [];
+                  return ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: msgs.length,
+                    itemBuilder: (context, i) {
+                      final m = msgs[i];
+                      final senderId = m['senderId'] as String? ?? '';
+                      final isMe = senderId == FirebaseAuth.instance.currentUser?.uid;
+                      final created = m['createdAt'];
+                      String timeLabel;
+                      if (created is Timestamp) {
+                        final dt = created.toDate();
+                        timeLabel = TimeOfDay.fromDateTime(dt).format(context);
+                      } else {
+                        timeLabel = TimeOfDay.now().format(context);
+                      }
+                      // Show a date header when the previous message has a different day
+                      final showDate = i == 0 || !_sameDay(msgs[i - 1]['createdAt'], m['createdAt']);
+                      return Column(
+                        children: [
+                          if (showDate)
+                            _DateHeader(date: _formatDateLabel(m['createdAt'])),
+                          _MessageBubble(text: (m['text'] ?? '') as String, isMe: isMe, time: timeLabel),
+                        ],
+                      );
+                    },
+                  );
+                },
+              ),
             ),
-          ),
 
-          // Input
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: const BoxDecoration(
-              color: Color(0xFF0F1724),
-              border: Border(top: BorderSide(color: Colors.white12)),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: _GlassTextField(
-                    controller: _messageCtrl,
-                    hint: 'Message',
-                    onSubmitted: (_) => _sendMessage(),
-                  ),
+            // Input (pad above keyboard)
+            Padding(
+              padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: const BoxDecoration(
+                  color: Color(0xFF0F1724),
+                  border: Border(top: BorderSide(color: Colors.white12)),
                 ),
-                const SizedBox(width: 8),
-                if (_uploading)
-                  SizedBox(width: 36, height: 36, child: CircularProgressIndicator(value: _uploadProgress, color: const Color(0xFFF0B429)))
-                else
-                  IconButton(
-                    icon: const Icon(Icons.attach_file, color: Colors.white70),
-                    onPressed: _sendImage,
-                  ),
-                const SizedBox(width: 8),
-                FloatingActionButton(
-                  onPressed: _sendMessage,
-                  mini: true,
-                  backgroundColor: const Color(0xFFF0B429),
-                  child: const Icon(Icons.send, color: Colors.black87),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _GlassTextField(
+                        controller: _messageCtrl,
+                        hint: 'Message',
+                        onSubmitted: (_) => _sendMessage(),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    if (_uploading)
+                      SizedBox(width: 36, height: 36, child: CircularProgressIndicator(value: _uploadProgress, color: const Color(0xFFF0B429)))
+                    else
+                      IconButton(
+                        icon: const Icon(Icons.attach_file, color: Colors.white70),
+                        onPressed: _sendImage,
+                      ),
+                    const SizedBox(width: 8),
+                    FloatingActionButton(
+                      onPressed: _sendMessage,
+                      mini: true,
+                      backgroundColor: const Color(0xFFF0B429),
+                      child: const Icon(Icons.send, color: Colors.black87),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
       bottomNavigationBar: _BottomNavBar(currentIndex: 1),
     );

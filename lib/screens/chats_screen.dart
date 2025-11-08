@@ -7,8 +7,33 @@ import '../services/firebase_service.dart';
 import 'package:flutter/services.dart';
 import 'chat_detail_screen.dart';
 
-class ChatsScreen extends StatelessWidget {
+class ChatsScreen extends StatefulWidget {
   const ChatsScreen({super.key});
+
+  @override
+  State<ChatsScreen> createState() => _ChatsScreenState();
+}
+
+class _ChatsScreenState extends State<ChatsScreen> {
+  List<Map<String, dynamic>> users = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchUsers();
+  }
+
+  void _fetchUsers() {
+    debugPrint('[ChatsScreen] Fetching users...');
+    FirebaseService.listenAllUsers().listen((data) {
+      debugPrint('[ChatsScreen] Received ${data.length} users');
+      setState(() {
+        users = data;
+      });
+    }, onError: (error) {
+      debugPrint('[ChatsScreen] Error fetching users: $error');
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -88,26 +113,75 @@ class ChatsScreen extends StatelessWidget {
                         const SizedBox(height: 12),
                         ElevatedButton.icon(
                           onPressed: () async {
-                            final otherUid = await showDialog<String>(
+                            final selectedUser = await showDialog<Map<String, dynamic>>(
                               context: context,
                               builder: (ctx) {
-                                final ctrl = TextEditingController();
                                 return AlertDialog(
-                                  title: const Text('Start chat'),
-                                  content: TextField(controller: ctrl, decoration: const InputDecoration(labelText: 'Other user UID')),
+                                  title: const Text('Select user to chat with'),
+                                  content: SizedBox(
+                                    width: double.maxFinite,
+                                    height: 300,
+                                    child: ListView.builder(
+                                      itemCount: users.length,
+                                      itemBuilder: (ctx, i) {
+                                        final user = users[i];
+                                        final userId = user['id'] as String?;
+                                        final displayName = user['displayName'] as String? ?? 'Unknown';
+                                        if (userId == uid) return const SizedBox.shrink(); // Skip current user
+                                        return ListTile(
+                                          title: Text(displayName),
+                                          onTap: () => Navigator.of(ctx).pop(user),
+                                        );
+                                      },
+                                    ),
+                                  ),
                                   actions: [
                                     TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancel')),
-                                    TextButton(onPressed: () => Navigator.of(ctx).pop(ctrl.text.trim()), child: const Text('Start')),
                                   ],
                                 );
                               },
                             );
-                            if (otherUid != null && otherUid.isNotEmpty) {
+                            if (selectedUser != null) {
+                              final otherUid = selectedUser['id'] as String;
+                              debugPrint('[ChatsScreen] Starting chat with user: $otherUid');
                               try {
                                 final chatId = await FirebaseService.getOrCreateDirectChat(uid, otherUid);
-                                Navigator.of(context).push(MaterialPageRoute(builder: (_) => ChatDetailScreen(chatId: chatId, otherUserName: otherUid)));
+                                final displayName = selectedUser['displayName'] as String? ?? otherUid;
+                                debugPrint('[ChatsScreen] Chat created with ID: $chatId, navigating to ChatDetailScreen');
+                                Navigator.of(context).push(MaterialPageRoute(builder: (_) => ChatDetailScreen(chatId: chatId, otherUserName: displayName, otherUserId: otherUid)));
                               } catch (e) {
-                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to create chat: $e')));
+                                debugPrint('[ChatsScreen] Failed to create chat: $e');
+                                // Show a dialog with an option to copy diagnostics to clipboard
+                                if (context.mounted) {
+                                  showDialog(
+                                    context: context,
+                                    builder: (ctx) {
+                                      return AlertDialog(
+                                        title: const Text('Failed to create chat'),
+                                        content: Text('Error: $e'),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () => Navigator.of(ctx).pop(),
+                                            child: const Text('OK'),
+                                          ),
+                                          TextButton(
+                                            onPressed: () async {
+                                              Navigator.of(ctx).pop();
+                                              try {
+                                                final diag = await FirebaseService.getDiagnostics(queryDesc: 'create chat uid=$uid other=$otherUid', error: e);
+                                                await Clipboard.setData(ClipboardData(text: diag));
+                                                if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Diagnostics copied to clipboard')));
+                                              } catch (err) {
+                                                if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to copy diagnostics: $err')));
+                                              }
+                                            },
+                                            child: const Text('Copy diagnostics'),
+                                          ),
+                                        ],
+                                      );
+                                    },
+                                  );
+                                }
                               }
                             }
                           },
@@ -132,17 +206,20 @@ class ChatsScreen extends StatelessWidget {
                     if (lastSent is Timestamp) {
                       timeLabel = TimeOfDay.fromDateTime(lastSent.toDate()).format(context);
                     }
+                    // Fetch user data for display name
+                    final userData = users.firstWhere((u) => u['id'] == other, orElse: () => {'displayName': other});
+                    final displayName = userData['displayName'] as String? ?? other;
+                    debugPrint('[ChatsScreen] Rendering chat tile for: $displayName (other: $other)');
                     return _ChatTile(
-                      name: other,
+                      name: displayName,
                       lastMessage: lastMessage,
                       time: timeLabel,
-                      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ChatDetailScreen(chatId: chat['id'], otherUserName: other))),
+                      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ChatDetailScreen(chatId: chat['id'], otherUserName: displayName, otherUserId: other))),
                     );
                   },
                 );
               },
             ),
-      bottomNavigationBar: _BottomNavBar(currentIndex: 1),
     );
   }
 }
@@ -166,12 +243,25 @@ class _ChatTile extends StatelessWidget {
     return _GlassCard(
       child: ListTile(
         onTap: onTap,
+        dense: true,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         leading: CircleAvatar(
           backgroundColor: const Color(0xFFF0B429),
-          child: Text(name[0], style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
+          radius: 20,
+          child: Text(name.isNotEmpty ? name[0] : '?', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
         ),
-        title: Text(name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-        subtitle: Text(lastMessage, style: const TextStyle(color: Colors.white70)),
+        title: Text(
+          name,
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Text(
+          lastMessage,
+          style: const TextStyle(color: Colors.white70),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         trailing: Text(time, style: const TextStyle(color: Colors.white60, fontSize: 12)),
       ),
     );
@@ -206,27 +296,4 @@ class _GlassCard extends StatelessWidget {
   }
 }
 
-// ── Bottom Nav ─────────────────────────────────────
-class _BottomNavBar extends StatelessWidget {
-  final int currentIndex;
-  const _BottomNavBar({required this.currentIndex});
 
-  @override
-  Widget build(BuildContext context) {
-    return BottomNavigationBar(
-      currentIndex: currentIndex,
-      backgroundColor: const Color(0xFF0F1724),
-      unselectedItemColor: Colors.white60,
-      selectedItemColor: const Color(0xFFF0B429),
-      type: BottomNavigationBarType.fixed,
-      items: const [
-        BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-        BottomNavigationBarItem(icon: Icon(Icons.chat_bubble), label: 'Chats'),
-        BottomNavigationBarItem(icon: Icon(Icons.notifications), label: 'Notif'),
-      ],
-      onTap: (i) {
-        if (i == 0) Navigator.of(context).popUntil((r) => r.isFirst);
-      },
-    );
-  }
-}
