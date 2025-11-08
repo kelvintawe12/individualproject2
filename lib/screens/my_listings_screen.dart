@@ -6,6 +6,7 @@ import '../services/firebase_service.dart';
 import '../services/library_service.dart';
 import 'post_screen.dart';
 import 'edit_listing_screen.dart';
+import 'browse_screen.dart';
 
 class MyListingsScreen extends StatefulWidget {
   const MyListingsScreen({super.key});
@@ -88,6 +89,26 @@ class _MyListingsScreenState extends State<MyListingsScreen> with TickerProvider
           icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
           onPressed: () => Navigator.of(context).pop(),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.home_outlined, color: Colors.white),
+            tooltip: 'Browse',
+            onPressed: () {
+              // Navigate back to the main listings/browse screen
+              Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const ListingsScreen()));
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.bookmark_outline, color: Colors.white),
+            tooltip: 'Library',
+            onPressed: () => Navigator.of(context).pushNamed('/library'),
+          ),
+          IconButton(
+            icon: const Icon(Icons.chat_bubble_outline, color: Colors.white),
+            tooltip: 'Chats',
+            onPressed: () => Navigator.of(context).pushNamed('/chats'),
+          ),
+        ],
       ),
       body: RefreshIndicator(
         onRefresh: _refresh,
@@ -218,7 +239,6 @@ class _MyListingsScreenState extends State<MyListingsScreen> with TickerProvider
         child: const Icon(Icons.add, color: Colors.black87),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      bottomNavigationBar: _BottomNavBar(currentIndex: 1),
     );
   }
 
@@ -575,37 +595,6 @@ class _DeleteDialog extends StatelessWidget {
   }
 }
 
-// ── Bottom Navigation ─────────────────────────────────────
-class _BottomNavBar extends StatelessWidget {
-  final int currentIndex;
-  const _BottomNavBar({required this.currentIndex});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: const Color(0xFF0F1724),
-      // Height includes bottom padding so the color extends into the
-      // system safe area (e.g. iPhone home indicator), adjusted by 8.0 pixels to fix overflow.
-      height: kBottomNavigationBarHeight + MediaQuery.of(context).padding.bottom + 8.0,
-      child: SafeArea(
-        top: false,
-        child: BottomNavigationBar(
-          type: BottomNavigationBarType.fixed,
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          currentIndex: currentIndex,
-          onTap: (i) {
-            if (i == 0) Navigator.of(context).popUntil((r) => r.isFirst);
-          },
-          selectedItemColor: const Color(0xFFF0B429),
-          unselectedItemColor: Colors.white38,
-          items: const [
-            BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-            BottomNavigationBarItem(icon: Icon(Icons.list_alt), label: 'My Listings'),
-            BottomNavigationBarItem(icon: Icon(Icons.chat), label: 'Chats'),
-          ],
-        ),
-      ),
-    );
-  }
-}
+// Bottom navigation is handled by the app shell (app.dart). This file
+// intentionally does not declare its own BottomNavigationBar to avoid
+// showing two navigation bars when embedded in the main scaffold.
