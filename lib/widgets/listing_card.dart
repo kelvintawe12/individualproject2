@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/library_service.dart';
 import '../services/firebase_service.dart';
 import 'dart:ui' as ui; // Required for ImageFilter
@@ -64,7 +65,15 @@ class _ListingCardState extends State<ListingCard> with SingleTickerProviderStat
     final author = widget.listing['author']?.toString() ?? 'Unknown';
     final imageUrl = widget.listing['imageUrl']?.toString();
     final condition = widget.listing['condition']?.toString() ?? 'Used';
-    final timestamp = widget.listing['timestamp'] as DateTime?;
+    final rawTimestamp = widget.listing['timestamp'];
+    DateTime? timestamp;
+    if (rawTimestamp is DateTime) {
+      timestamp = rawTimestamp;
+    } else if (rawTimestamp is Timestamp) {
+      timestamp = rawTimestamp.toDate();
+    } else {
+      timestamp = null;
+    }
     final timeAgo = timestamp != null ? _formatTimeAgo(timestamp) : 'Just now';
     final heroTag = 'coverHero-$id-$title';
 

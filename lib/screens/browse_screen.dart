@@ -6,6 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:pull_to_refresh/pull_to_refresh.dart';
 import '../services/library_service.dart';
 import '../services/firebase_service.dart'; // Assuming this exists
+import '../widgets/listing_card.dart';
 import 'post_screen.dart'; // Adjust path
 
 class ListingsScreen extends StatefulWidget {
@@ -274,10 +275,17 @@ class _ListingsScreenState extends State<ListingsScreen>
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
                   sliver: SliverList(
                     delegate: SliverChildBuilderDelegate(
-                      (context, i) => _AnimatedListingCard(
-                        listing: filtered[i],
-                        index: i,
-                        controller: _staggerController,
+                      (context, i) => AnimatedBuilder(
+                        animation: _staggerController,
+                        builder: (context, child) {
+                          final animation = Tween<double>(begin: 0.0, end: 1.0)
+                              .animate(CurvedAnimation(parent: _staggerController, curve: Interval(0.05 * (i % 8), 0.5 + 0.05 * (i % 8), curve: Curves.easeOutCubic)));
+                          return Transform.translate(
+                            offset: Offset(0, 80 * (1 - animation.value)),
+                            child: Opacity(opacity: animation.value, child: child),
+                          );
+                        },
+                        child: ListingCard(listing: filtered[i]),
                       ),
                       childCount: filtered.length,
                     ),
@@ -612,46 +620,7 @@ class _GlassListingCardState extends State<_GlassListingCard>
   }
 }
 
-// ── Staggered Animation Wrapper ───────────────────────────────────
-class _AnimatedListingCard extends StatelessWidget {
-  final Map<String, dynamic> listing;
-  final int index;
-  final AnimationController controller;
-
-  const _AnimatedListingCard({
-    required this.listing,
-    required this.index,
-    required this.controller,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final animation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: controller,
-        curve: Interval(
-          0.05 * (index % 8),
-          0.5 + 0.05 * (index % 8),
-          curve: Curves.easeOutCubic,
-        ),
-      ),
-    );
-
-    return AnimatedBuilder(
-      animation: animation,
-      builder: (context, child) {
-        return Transform.translate(
-          offset: Offset(0, 80 * (1 - animation.value)),
-          child: Opacity(
-            opacity: animation.value,
-            child: child,
-          ),
-        );
-      },
-      child: _GlassListingCard(listing: listing),
-    );
-  }
-}
+// (Animations handled inline where ListingCard is used.)
 
 // ── Condition Badge (unchanged but polished) ─────────────────────
 class _ConditionBadge extends StatelessWidget {

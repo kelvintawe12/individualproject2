@@ -260,39 +260,74 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
                                 ],
                               ),
                             );
-                            if (confirm == true) {
-                                  setState(() => _isPending = true);
-                                  // create swap in Firestore
+                                if (confirm == true) {
+                                  // Validate user and ownership
+                                  final currentUid = FirebaseAuth.instance.currentUser?.uid;
                                   final listingId = widget.listing?['id'] as String?;
                                   final ownerId = widget.listing?['ownerId'] as String?;
-                                  final requesterId = FirebaseAuth.instance.currentUser?.uid ?? 'anonymous';
-                                  if (listingId != null && ownerId != null) {
-                                    await FirebaseService.createSwap(listingId, requesterId, ownerId);
+                                  if (currentUid == null) {
+                                    if (!mounted) return;
+                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please sign in to request a swap')));
+                                    setState(() => _isPending = false);
+                                    return;
+                                  }
+                                  if (ownerId == null || listingId == null) {
+                                    if (!mounted) return;
+                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Listing is not available')));
+                                    setState(() => _isPending = false);
+                                    return;
+                                  }
+                                  if (ownerId == currentUid) {
+                                    if (!mounted) return;
+                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('You cannot request your own listing')));
+                                    setState(() => _isPending = false);
+                                    return;
                                   }
 
-                                  // show Lottie success dialog
-                                  if (!mounted) return;
-                                  await showDialog<void>(
-                                    context: context,
-                                    builder: (_) => AlertDialog(
-                                      content: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          SizedBox(
-                                            width: 140,
-                                            height: 140,
-                                            child: Center(child: Lottie.network('https://assets10.lottiefiles.com/packages/lf20_jbrw3hcz.json')),
+                                  // attempt to create swap (dedupe handled inside service)
+                                  try {
+                                    final swapId = await FirebaseService.createSwap(listingId, currentUid, ownerId);
+                                    // Read the swap doc to determine status
+                                    final snap = await FirebaseFirestore.instance.collection('swaps').doc(swapId).get();
+                                    final status = snap.exists ? (snap.data()?['status'] as String?) : null;
+                                    if (status == 'pending') {
+                                      if (!mounted) return;
+                                      setState(() => _isPending = true);
+                                      // show Lottie success dialog
+                                      await showDialog<void>(
+                                        context: context,
+                                        builder: (_) => AlertDialog(
+                                          content: Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              SizedBox(
+                                                width: 140,
+                                                height: 140,
+                                                child: Center(child: Lottie.network('https://assets10.lottiefiles.com/packages/lf20_jbrw3hcz.json')),
+                                              ),
+                                              const SizedBox(height: 8),
+                                              const Text('Swap request sent!')
+                                            ],
                                           ),
-                                          const SizedBox(height: 8),
-                                          const Text('Swap request sent!')
-                                        ],
-                                      ),
-                                      actions: [
-                                        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('OK'))
-                                      ],
-                                    ),
-                                  );
-                            }
+                                          actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('OK'))],
+                                        ),
+                                      );
+                                    } else if (status == 'accepted') {
+                                      if (!mounted) return;
+                                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('This swap has already been accepted')));
+                                    } else if (status == 'rejected') {
+                                      if (!mounted) return;
+                                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('This swap was previously rejected')));
+                                    } else {
+                                      if (!mounted) return;
+                                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Swap request status updated')));
+                                    }
+                                  } catch (e) {
+                                    if (!mounted) return;
+                                    setState(() => _isPending = false);
+                                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to send swap request: $e')));
+                                  }
+                                }
                           },
                           style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFF0B429), padding: const EdgeInsets.symmetric(vertical: 16)),
                           child: const Text('Request Swap'),
