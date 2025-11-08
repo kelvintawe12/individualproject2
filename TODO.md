@@ -1,7 +1,8 @@
-- [ ] Remove background image and overlay from sign_in_screen.dart
-- [ ] Add animated gradient background to sign_in_screen.dart
-- [ ] Change text colors to black in sign_in_screen.dart
-- [ ] Remove background image and overlay from sign_up_screen.dart
-- [ ] Add animated gradient background to sign_up_screen.dart
-- [ ] Change text colors to black in sign_up_screen.dart
-- [ ] Keep Lottie animation in sign_up_screen.dart
+- [x] Update FirebaseService.createListing to include 'type' field (default 'user')
+- [x] Modify PostScreen to add toggle for posting as "Library Book" (type='library', ownerId='library')
+- [ ] Add "Add to Library" button in MyListingsScreen to copy listing as library book
+- [ ] Create new LibraryScreen (similar to BrowseScreen) showing all available books
+- [ ] Update app.dart to include LibraryScreen in routes and screens list
+- [ ] Update bottom navigation bar to include Library tab (adjust to 5 items or replace)
+- [ ] Test library posting, appending user books, and swap functionality from library screen
+- [ ] Ensure UI consistency and handle library-specific logic (e.g., no edit for library books)

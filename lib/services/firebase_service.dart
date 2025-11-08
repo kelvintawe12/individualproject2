@@ -348,6 +348,9 @@ class FirebaseService {
   /// Use this when you need a non-deterministic chat id (group chat etc.).
   static Future<String> createChatWithParticipants(List<String> participants, {String? chatId, Map<String, dynamic>? metadata}) async {
     if (participants.isEmpty) throw ArgumentError('participants must not be empty');
+    // Check for an existing chat with the same participants and return it
+    final existing = await findChatByParticipants(participants);
+    if (existing != null) return existing;
     try {
       final col = FirebaseFirestore.instance.collection('chats');
       if (chatId != null && chatId.isNotEmpty) {
@@ -356,6 +359,7 @@ class FirebaseService {
           'participants': participants,
           'lastMessage': '',
           'lastSentAt': FieldValue.serverTimestamp(),
+          'createdBy': FirebaseAuth.instance.currentUser?.uid,
         };
         if (metadata != null) payload.addAll(metadata);
         await ref.set(payload, SetOptions(merge: true));
@@ -365,6 +369,7 @@ class FirebaseService {
           'participants': participants,
           'lastMessage': '',
           'lastSentAt': FieldValue.serverTimestamp(),
+          'createdBy': FirebaseAuth.instance.currentUser?.uid,
           if (metadata != null) ...metadata,
         });
         return docRef.id;
@@ -373,6 +378,85 @@ class FirebaseService {
       if (kDebugMode) debugPrint('[FirebaseService] createChatWithParticipants error: $e');
       rethrow;
     }
+  }
+
+  /// Return a chat document map by id, or null if not found.
+  static Future<Map<String, dynamic>?> getChatById(String chatId) async {
+    final ref = FirebaseFirestore.instance.collection('chats').doc(chatId);
+    final snap = await ref.get();
+    if (!snap.exists) return null;
+    final m = Map<String, dynamic>.from(snap.data()!);
+    m['id'] = snap.id;
+    return m;
+  }
+
+  /// Try to find an existing chat that exactly matches the given participants set.
+  /// For two participants this uses the deterministic id; for larger sets we
+  /// query by arrayContains on the first participant and compare sets client-side.
+  /// Returns the chatId if found, otherwise null.
+  static Future<String?> findChatByParticipants(List<String> participants) async {
+    if (participants.isEmpty) return null;
+    // For 1 or 2 participants we can use the deterministic id logic when possible
+    if (participants.length == 2) {
+      final id = _directChatId(participants[0], participants[1]);
+      final ref = FirebaseFirestore.instance.collection('chats').doc(id);
+      final snap = await ref.get();
+      if (snap.exists) return ref.id;
+      return null;
+    }
+
+    // For group chats: find candidate chats containing the first participant,
+    // then compare the participants set exactly to avoid false positives.
+    final col = FirebaseFirestore.instance.collection('chats');
+    final first = participants.first;
+    final qsnap = await col.where('participants', arrayContains: first).get();
+    final target = participants.toSet();
+    for (final d in qsnap.docs) {
+      try {
+        final List<dynamic> pList = d.data()['participants'] ?? [];
+        final found = pList.map((e) => e as String).toSet();
+        if (found.length == target.length && found.containsAll(target)) {
+          return d.id;
+        }
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  /// Remove a participant from a chat. If the resulting participants list is
+  /// empty the chat (and messages) will be deleted. This runs in a transaction
+  /// to avoid races.
+  static Future<void> leaveChat(String chatId, String uid) async {
+    final firestore = FirebaseFirestore.instance;
+    final chatRef = firestore.collection('chats').doc(chatId);
+    await firestore.runTransaction((tx) async {
+      final snap = await tx.get(chatRef);
+      if (!snap.exists) return;
+      final data = snap.data()!;
+      final participants = List<String>.from(data['participants'] ?? []);
+      if (!participants.contains(uid)) return;
+      final updated = List<String>.from(participants)..remove(uid);
+      if (updated.isEmpty) {
+        // delete messages in batches then delete chat doc
+        // perform deletes outside transaction to avoid long-running tx; commit transaction first
+        tx.delete(chatRef);
+      } else {
+        tx.update(chatRef, {'participants': updated});
+      }
+    });
+    // If chat now has no participants, delete messages (best-effort).
+    final maybe = await getChatById(chatId);
+    if (maybe == null) {
+      try {
+        await deleteChat(chatId);
+      } catch (_) {}
+    }
+  }
+
+  /// Update chat metadata fields (merge). Useful for editing group name, avatar, etc.
+  static Future<void> updateChatMetadata(String chatId, Map<String, dynamic> data) async {
+    final ref = FirebaseFirestore.instance.collection('chats').doc(chatId);
+    await ref.set(data, SetOptions(merge: true));
   }
 
   /// Delete a chat and its messages subcollection in batches.
@@ -479,14 +563,32 @@ class FirebaseService {
       'createdAt': FieldValue.serverTimestamp(),
     };
 
-    await messagesRef.add(payload);
+    // Use a batched write so adding the message and updating chat metadata
+    // happen atomically. This reduces the chance of partial-writes and
+    // surfaces a single error we can log and inspect (useful for web
+    // channel / write stream 400 errors seen in devtools).
+    final firestore = FirebaseFirestore.instance;
+    final chatRef = firestore.collection('chats').doc(chatId);
+    final msgRef = messagesRef.doc();
 
-    // Update chat metadata
-    final chatRef = FirebaseFirestore.instance.collection('chats').doc(chatId);
-    await chatRef.update({
-      'lastMessage': (t.isNotEmpty ? t : (i.isNotEmpty ? '[image]' : '')),
-      'lastSentAt': FieldValue.serverTimestamp(),
-    });
+    try {
+      final batch = firestore.batch();
+      batch.set(msgRef, payload);
+      batch.update(chatRef, {
+        'lastMessage': (t.isNotEmpty ? t : (i.isNotEmpty ? '[image]' : '')),
+        'lastSentAt': FieldValue.serverTimestamp(),
+      });
+      await batch.commit();
+    } on FirebaseException catch (fe) {
+      // Log full FirebaseException details for debugging (includes code/message).
+      if (kDebugMode) {
+        debugPrint('[FirebaseService] sendMessage FirebaseException: code=${fe.code} message=${fe.message}');
+      }
+      rethrow;
+    } catch (e, st) {
+      if (kDebugMode) debugPrint('[FirebaseService] sendMessage unexpected error: $e\n$st');
+      rethrow;
+    }
     return;
   }
 

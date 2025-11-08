@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:image_picker/image_picker.dart';
@@ -24,10 +25,19 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   final ImagePicker _picker = ImagePicker();
   bool _uploading = false;
   double _uploadProgress = 0.0;
+  // Cache of user profiles (uid -> data)
+  final Map<String, Map<String, dynamic>> _userProfiles = {};
+  List<String> _currentParticipants = [];
 
   @override
   void initState() {
     super.initState();
+    // If we already know the other user (direct chat), prefetch their profile
+    if (widget.otherUserId != null) {
+      FirebaseService.getUsersByIds([widget.otherUserId!]).then((m) {
+        if (mounted) setState(() => _userProfiles.addAll(m));
+      }).catchError((_) {});
+    }
   }
 
   @override
@@ -101,13 +111,133 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       appBar: AppBar(
         backgroundColor: const Color(0xFF0F1724),
         elevation: 0,
-        title: Text(
-          widget.otherUserName,
-          style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.white),
-        ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
           onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          stream: FirebaseFirestore.instance.collection('chats').doc(widget.chatId).snapshots(),
+          builder: (context, snap) {
+            String title = widget.otherUserName;
+            List<String> participants = [];
+            String? chatName;
+            if (snap.hasData && snap.data!.data() != null) {
+              final data = snap.data!.data()!;
+              chatName = (data['name'] as String?)?.trim();
+              participants = List<String>.from(data['participants'] ?? []);
+              // Prefetch profiles for participants not yet cached
+              final missing = participants.where((p) => !_userProfiles.containsKey(p)).toList();
+              if (missing.isNotEmpty) {
+                FirebaseService.getUsersByIds(missing).then((m) {
+                  if (mounted) setState(() { _userProfiles.addAll(m); _currentParticipants = participants; });
+                }).catchError((_) {});
+              }
+            }
+
+            if (chatName != null && chatName.isNotEmpty) {
+              title = chatName;
+            } else if (participants.length > 2) {
+              title = 'Group (${participants.length})';
+            }
+
+            // Build avatar(s)
+            Widget leadingAv;
+            if (participants.isEmpty) {
+              leadingAv = CircleAvatar(backgroundColor: const Color(0xFFF0B429), child: Text(title.isNotEmpty ? title[0] : '?', style: const TextStyle(color: Colors.black87)));
+            } else if (participants.length == 1 || (participants.length == 2 && widget.otherUserId != null)) {
+              final other = participants.firstWhere((p) => p != FirebaseAuth.instance.currentUser?.uid, orElse: () => participants.first);
+              final prof = _userProfiles[other];
+              final avatarUrl = (prof != null) ? (prof['avatarUrl'] as String?) ?? '' : '';
+              leadingAv = (avatarUrl.isNotEmpty) ? CircleAvatar(backgroundImage: NetworkImage(avatarUrl)) : CircleAvatar(backgroundColor: const Color(0xFFF0B429), child: Text(title.isNotEmpty ? title[0] : '?', style: const TextStyle(color: Colors.black87)));
+            } else {
+              final pics = <Widget>[];
+              for (var p in participants.take(3)) {
+                if (p == FirebaseAuth.instance.currentUser?.uid) continue;
+                final prof = _userProfiles[p];
+                final avatarUrl = (prof != null) ? (prof['avatarUrl'] as String?) ?? '' : '';
+                final a = (avatarUrl.isNotEmpty) ? CircleAvatar(radius: 12, backgroundImage: NetworkImage(avatarUrl)) : CircleAvatar(radius: 12, backgroundColor: const Color(0xFFF0B429), child: Text(((prof != null) ? (prof['displayName'] as String?) ?? p : p).isNotEmpty ? ((prof != null) ? (prof['displayName'] as String?) ?? p : p)[0] : '?', style: const TextStyle(color: Colors.black87, fontSize: 10)));
+                pics.add(a);
+              }
+              leadingAv = SizedBox(
+                width: 44,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: pics.asMap().entries.map((e) {
+                    final idx = e.key;
+                    return Positioned(left: idx * 16.0, child: e.value);
+                  }).toList(),
+                ),
+              );
+            }
+
+            // Show overflow menu for owners to edit/delete
+            String? createdBy;
+            if (snap.hasData && snap.data!.data() != null) createdBy = (snap.data!.data()!['createdBy'] as String?);
+
+            return Row(
+              children: [
+                leadingAv,
+                const SizedBox(width: 12),
+                Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.white))),
+                if (createdBy != null && createdBy == FirebaseAuth.instance.currentUser?.uid) ...[
+                  PopupMenuButton<String>(
+                    color: const Color(0xFF0F1724),
+                    icon: const Icon(Icons.more_vert, color: Colors.white),
+                    onSelected: (v) async {
+                      if (v == 'edit') {
+                        final ctrl = TextEditingController(text: chatName ?? '');
+                        final ok = await showDialog<bool>(context: context, builder: (ctx) {
+                          return AlertDialog(
+                            title: const Text('Edit group name'),
+                            content: TextField(controller: ctrl, decoration: const InputDecoration(hintText: 'Group name')),
+                            actions: [
+                              TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
+                              ElevatedButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Save')),
+                            ],
+                          );
+                        });
+                        if (ok == true) {
+                          final newName = ctrl.text.trim();
+                          try {
+                            await FirebaseService.updateChatMetadata(widget.chatId, {'name': newName});
+                            if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Group name updated')));
+                          } catch (e) {
+                            if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to update name: $e')));
+                          }
+                        }
+                      } else if (v == 'delete') {
+                        final confirm = await showDialog<bool>(context: context, builder: (ctx) {
+                          return AlertDialog(
+                            title: const Text('Delete chat'),
+                            content: const Text('This will permanently delete the chat and all messages. This action cannot be undone. Are you sure?'),
+                            actions: [
+                              TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
+                              ElevatedButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Delete', style: TextStyle(color: Colors.white))),
+                            ],
+                          );
+                        });
+                        if (confirm == true) {
+                          try {
+                            await FirebaseService.deleteChat(widget.chatId);
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Chat deleted')));
+                              Navigator.of(context).pop();
+                            }
+                          } catch (e) {
+                            if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to delete chat: $e')));
+                          }
+                        }
+                      }
+                    },
+                    itemBuilder: (ctx) => const [
+                      PopupMenuItem(value: 'edit', child: Text('Edit group name', style: TextStyle(color: Colors.white))),
+                      PopupMenuItem(value: 'delete', child: Text('Delete chat', style: TextStyle(color: Colors.white))),
+                    ],
+                  ),
+                ],
+              ],
+            );
+          },
         ),
       ),
       body: SafeArea(
@@ -116,9 +246,13 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             Expanded(
               child: StreamBuilder<List<Map<String, dynamic>>>(
                 stream: FirebaseService.listenMessages(widget.chatId),
+                // Provide an empty initialData so the UI doesn't get stuck showing
+                // a spinner indefinitely if the stream is slow to emit.
+                initialData: const <Map<String, dynamic>>[],
                 builder: (context, snap) {
-                  if (snap.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
+                  // If the stream produced an error, log it and show a helpful UI
+                  if (snap.hasError) {
+                    if (kDebugMode) debugPrint('[ChatDetailScreen] messages stream error: ${snap.error}');
                   }
                   // Surface listen errors (permission denied etc.) so the user
                   // sees a helpful message instead of a blank chat view.
@@ -211,11 +345,15 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                       }
                       // Show a date header when the previous message has a different day
                       final showDate = i == 0 || !_sameDay(msgs[i - 1]['createdAt'], m['createdAt']);
+                      final senderProfile = _userProfiles[senderId];
+                      final senderName = senderProfile != null ? (senderProfile['displayName'] as String?) ?? '' : '';
+                      final senderAvatar = senderProfile != null ? (senderProfile['avatarUrl'] as String?) ?? '' : '';
+
                       return Column(
                         children: [
                           if (showDate)
                             _DateHeader(date: _formatDateLabel(m['createdAt'])),
-                          _MessageBubble(text: (m['text'] ?? '') as String, isMe: isMe, time: timeLabel),
+                          _MessageBubble(text: (m['text'] ?? '') as String, isMe: isMe, time: timeLabel, senderName: senderName, senderAvatarUrl: senderAvatar),
                         ],
                       );
                     },
@@ -297,36 +435,58 @@ class _MessageBubble extends StatelessWidget {
   final String text;
   final bool isMe;
   final String time;
+  final String? senderName;
+  final String? senderAvatarUrl;
 
-  const _MessageBubble({required this.text, required this.isMe, required this.time});
+  const _MessageBubble({required this.text, required this.isMe, required this.time, this.senderName, this.senderAvatarUrl});
 
   @override
   Widget build(BuildContext context) {
-    return Align(
-      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 4),
-        padding: const EdgeInsets.all(14),
-        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.7),
-        decoration: BoxDecoration(
-          color: isMe ? const Color(0xFFF0B429) : Colors.white.withOpacity(0.12),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              text,
-              style: TextStyle(color: isMe ? Colors.black87 : Colors.white, fontSize: 15),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              time,
-              style: TextStyle(color: (isMe ? Colors.black54 : Colors.white60), fontSize: 10),
-            ),
-          ],
-        ),
+    final bubble = Container(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.all(14),
+      constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.72),
+      decoration: BoxDecoration(
+        color: isMe ? const Color(0xFFF0B429) : Colors.white.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(16),
       ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (!isMe && senderName != null && senderName!.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6.0),
+              child: Text(senderName!, style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600)),
+            ),
+          Text(
+            text,
+            style: TextStyle(color: isMe ? Colors.black87 : Colors.white, fontSize: 15),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            time,
+            style: TextStyle(color: (isMe ? Colors.black54 : Colors.white60), fontSize: 10),
+          ),
+        ],
+      ),
+    );
+
+    if (isMe) {
+      return Align(alignment: Alignment.centerRight, child: bubble);
+    }
+
+    // Incoming message: show avatar then bubble
+    final avatar = (senderAvatarUrl != null && senderAvatarUrl!.isNotEmpty)
+        ? CircleAvatar(radius: 16, backgroundImage: NetworkImage(senderAvatarUrl!))
+        : CircleAvatar(radius: 16, backgroundColor: const Color(0xFFF0B429), child: Text((senderName ?? '?').isNotEmpty ? (senderName ?? '?')[0] : '?', style: const TextStyle(color: Colors.black87)));
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        avatar,
+        const SizedBox(width: 8),
+        Expanded(child: bubble),
+      ],
     );
   }
 }

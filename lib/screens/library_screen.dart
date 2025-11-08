@@ -1,8 +1,9 @@
+
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../services/firebase_service.dart';
+import '../services/library_service.dart';
 import 'listing_detail_screen.dart';
 
 class LibraryScreen extends StatefulWidget {
@@ -63,7 +64,7 @@ class _LibraryScreenState extends State<LibraryScreen> with TickerProviderStateM
         onRefresh: _refresh,
         color: const Color(0xFFF0B429),
         child: StreamBuilder<List<Map<String, dynamic>>>(
-          stream: FirebaseService.listenListings(),
+          stream: LibraryService.listenUserLibraryListings(_user!.uid),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(
@@ -93,8 +94,7 @@ class _LibraryScreenState extends State<LibraryScreen> with TickerProviderStateM
               );
             }
 
-            final allItems = snapshot.data ?? [];
-            final libraryItems = allItems.where((item) => item['type'] == 'library' || item['ownerId'] == 'library').toList();
+            final libraryItems = snapshot.data ?? [];
 
             if (libraryItems.isEmpty) {
               return Center(

@@ -1,6 +1,7 @@
- import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:async';
+import 'firebase_service.dart';
 
 class LibraryService {
   /// Add a listing to the user's library.
@@ -35,6 +36,16 @@ class LibraryService {
         m['id'] = d.id;
         return m;
       }).toList();
+    });
+  }
+
+  /// Listen to user's library listings with full listing data.
+  static Stream<List<Map<String, dynamic>>> listenUserLibraryListings(String userId) {
+    return listenUserLibrary(userId).asyncMap((entries) async {
+      final ids = entries.map((e) => e['listingId'] as String).toList();
+      if (ids.isEmpty) return [];
+      final listingsMap = await FirebaseService.getListingsByIds(ids);
+      return listingsMap.values.toList();
     });
   }
 }
