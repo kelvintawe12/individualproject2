@@ -205,7 +205,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                       timeLabel = TimeOfDay.fromDateTime(lastSent.toDate()).format(context);
                     }
                     // Fetch user data for display name
-                    // Prefer an explicit chat name when present (set during group creation)
+                  // Prefer an explicit chat name when present (set during group creation)
                     final chatName = (chat['name'] as String?)?.trim();
                     String displayName;
                     String? otherUserId;

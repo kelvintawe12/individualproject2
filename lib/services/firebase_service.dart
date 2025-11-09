@@ -327,7 +327,40 @@ class FirebaseService {
   /// Accept a swap by setting status to 'accepted'.
   static Future<void> acceptSwap(String swapId) async {
     final ref = FirebaseFirestore.instance.collection('swaps').doc(swapId);
-    await ref.update({'status': 'accepted', 'acceptedAt': FieldValue.serverTimestamp()});
+    final payload = {'status': 'accepted', 'acceptedAt': FieldValue.serverTimestamp()};
+    // Basic validation and richer diagnostics before performing the update.
+    if (swapId.trim().isEmpty) {
+      if (kDebugMode) debugPrint('[FirebaseService] acceptSwap called with empty swapId');
+      throw ArgumentError('swapId must not be empty');
+    }
+    if (swapId.contains('/')) {
+      if (kDebugMode) debugPrint('[FirebaseService] acceptSwap swapId contains unexpected "/": $swapId');
+    }
+
+    try {
+      // Fetch current document so we can log its shape and help diagnose invalid writes.
+      final before = await ref.get();
+      if (kDebugMode) {
+        debugPrint('[FirebaseService] acceptSwap preparing to update swap $swapId with payload=$payload');
+        debugPrint('[FirebaseService] acceptSwap - document exists=${before.exists}');
+        debugPrint('[FirebaseService] acceptSwap - document data=${before.data()}');
+        final dataMap = before.data();
+        if (dataMap != null) {
+          dataMap.forEach((k, v) {
+            debugPrint('[FirebaseService] acceptSwap - field $k -> type=${v.runtimeType} value=$v');
+          });
+        }
+      }
+
+      await ref.update(payload);
+      if (kDebugMode) debugPrint('[FirebaseService] acceptSwap update completed for $swapId');
+    } on FirebaseException catch (fe) {
+      if (kDebugMode) debugPrint('[FirebaseService] acceptSwap FirebaseException: code=${fe.code} message=${fe.message}');
+      rethrow;
+    } catch (e, st) {
+      if (kDebugMode) debugPrint('[FirebaseService] acceptSwap unexpected error: $e\n$st');
+      rethrow;
+    }
     // Notify the requester that their swap was accepted.
     try {
       final snap = await ref.get();
