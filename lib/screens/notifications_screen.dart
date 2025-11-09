@@ -511,11 +511,30 @@ class _EmptyState extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Lottie.asset(
-            'assets/empty_notifications.json', // optional: add this
-            width: 180,
-            height: 180,
-            repeat: true,
+          // Try to load the Lottie asset; if missing show a simple fallback.
+          FutureBuilder<String>(
+            future: rootBundle.loadString('assets/empty_notifications.json'),
+            builder: (context, snap) {
+              if (snap.connectionState == ConnectionState.waiting) {
+                return const SizedBox(width: 180, height: 180);
+              }
+              if (snap.hasError) {
+                // Asset missing or failed to load — show a bundled PNG fallback
+                return Image.asset(
+                  'assets/bookOpen.png',
+                  width: 180,
+                  height: 180,
+                  fit: BoxFit.contain,
+                );
+              }
+              // Asset exists — render Lottie normally
+              return Lottie.asset(
+                'assets/empty_notifications.json',
+                width: 180,
+                height: 180,
+                repeat: true,
+              );
+            },
           ),
           const SizedBox(height: 16),
           const Text(
