@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:lottie/lottie.dart';
 import 'dart:ui' as ui;
+import 'package:flutter/foundation.dart';
+import 'dart:convert';
+import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/firebase_service.dart';
@@ -16,6 +19,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> with TickerPr
   // Notifications are loaded from Firestore per-user.
 
   late final AnimationController _staggerController;
+  // Hold the latest notifications snapshot for debug actions (not used for build updates).
+  List<Map<String, dynamic>> _lastNotifications = [];
+  // Hold latest error message from the notifications stream so debug actions can copy it.
+  String? _lastNotificationsError;
+  // Toggle whether the debug mini-FABs are visible
+  bool _debugFabOpen = false;
 
   @override
   void initState() {
@@ -75,8 +84,24 @@ class _NotificationsScreenState extends State<NotificationsScreen> with TickerPr
                 stream: FirebaseService.listenNotificationsForUser(uid),
                 builder: (context, snap) {
                   if (snap.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-                  if (snap.hasError) return Center(child: Text('Failed to load notifications: ${snap.error}', style: const TextStyle(color: Colors.white70)));
+                  if (snap.hasError) {
+                    // cache the error text so debug actions can copy it
+                    try {
+                      _lastNotificationsError = snap.error?.toString();
+                    } catch (_) {
+                      _lastNotificationsError = '${snap.error}';
+                    }
+                    return Center(child: Text('Failed to load notifications: ${snap.error}', style: const TextStyle(color: Colors.white70)));
+                  }
                   final items = snap.data ?? [];
+                  // cache latest items for debug buttons (no setState to avoid rebuild loops)
+                  try {
+                    _lastNotifications = List<Map<String, dynamic>>.from(items);
+                    _lastNotificationsError = null;
+                  } catch (_) {
+                    _lastNotifications = items.cast<Map<String, dynamic>>();
+                    _lastNotificationsError = null;
+                  }
                   if (items.isEmpty) return _EmptyState();
                   return ListView.builder(
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
@@ -228,6 +253,91 @@ class _NotificationsScreenState extends State<NotificationsScreen> with TickerPr
                 },
               ),
       ),
+      floatingActionButton: kDebugMode
+          ? Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                if (_debugFabOpen) ...[
+                  // Print action with label
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        margin: const EdgeInsets.only(right: 8),
+                        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
+                        child: const Text('Print', style: TextStyle(color: Colors.black87, fontSize: 13, fontWeight: FontWeight.w600)),
+                      ),
+                      FloatingActionButton.small(
+                        heroTag: 'debug_print',
+                        backgroundColor: Colors.white,
+                        foregroundColor: Colors.black87,
+                        onPressed: () {
+                          if (_lastNotifications.isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No notifications to print'), backgroundColor: Color(0xFFF0B429)));
+                            return;
+                          }
+                          try {
+                            final jsonText = const JsonEncoder.withIndent('  ').convert(_lastNotifications);
+                            debugPrint(jsonText);
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Notifications printed to console'), backgroundColor: Color(0xFF4CAF50)));
+                          } catch (e) {
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to print: $e')));
+                          }
+                        },
+                        child: const Icon(Icons.print, size: 18),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Copy action with label
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        margin: const EdgeInsets.only(right: 8),
+                        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
+                        child: const Text('Copy', style: TextStyle(color: Colors.black87, fontSize: 13, fontWeight: FontWeight.w600)),
+                      ),
+                      FloatingActionButton.small(
+                        heroTag: 'debug_copy',
+                        backgroundColor: Colors.white,
+                        foregroundColor: Colors.black87,
+                        onPressed: () async {
+                          try {
+                            if (_lastNotifications.isNotEmpty) {
+                              final jsonText = const JsonEncoder.withIndent('  ').convert(_lastNotifications);
+                              await Clipboard.setData(ClipboardData(text: jsonText));
+                              if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Notifications copied to clipboard'), backgroundColor: Color(0xFF4CAF50)));
+                              return;
+                            }
+                            if (_lastNotificationsError != null && _lastNotificationsError!.isNotEmpty) {
+                              await Clipboard.setData(ClipboardData(text: _lastNotificationsError ?? ''));
+                              if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error copied to clipboard'), backgroundColor: Color(0xFF4CAF50)));
+                              return;
+                            }
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No notifications to copy'), backgroundColor: Color(0xFFF0B429)));
+                          } catch (e) {
+                            if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to copy: $e')));
+                          }
+                        },
+                        child: const Icon(Icons.copy, size: 18),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                FloatingActionButton(
+                  backgroundColor: const Color(0xFFF0B429),
+                  child: Icon(_debugFabOpen ? Icons.close : Icons.bug_report),
+                  onPressed: () => setState(() => _debugFabOpen = !_debugFabOpen),
+                ),
+              ],
+            )
+          : null,
       // Bottom navigation handled by the app shell's global BottomNavigationBar.
     );
   }

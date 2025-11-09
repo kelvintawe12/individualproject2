@@ -222,6 +222,41 @@ class FirebaseService {
     }
   }
 
+  /// Find a pending swap for a given listing and requester.
+  /// Returns the swap document id if found, otherwise null.
+  static Future<String?> findPendingSwap(String listingId, String requesterId) async {
+    try {
+      final col = FirebaseFirestore.instance.collection('swaps');
+      final qsnap = await col
+          .where('listingId', isEqualTo: listingId)
+          .where('requesterId', isEqualTo: requesterId)
+          .where('status', isEqualTo: 'pending')
+          .limit(1)
+          .get();
+      if (qsnap.docs.isNotEmpty) return qsnap.docs.first.id;
+      return null;
+    } catch (e) {
+      if (kDebugMode) debugPrint('[FirebaseService] findPendingSwap failed: $e');
+      return null;
+    }
+  }
+
+  /// Get pending swap requests received by a user (owner view).
+  static Future<List<Map<String, dynamic>>> getReceivedSwapRequests(String ownerId) async {
+    try {
+      final col = FirebaseFirestore.instance.collection('swaps');
+      final snap = await col.where('ownerId', isEqualTo: ownerId).where('status', isEqualTo: 'pending').orderBy('createdAt', descending: true).get();
+      return snap.docs.map((d) {
+        final m = Map<String, dynamic>.from(d.data());
+        m['id'] = d.id;
+        return m;
+      }).toList();
+    } catch (e) {
+      if (kDebugMode) debugPrint('[FirebaseService] getReceivedSwapRequests failed: $e');
+      return [];
+    }
+  }
+
   /// Create a notification document for a recipient user.
   /// Notification payload is a map with arbitrary keys specific to the type.
   static Future<String> createNotification(String recipientId, String type, Map<String, dynamic> payload) async {

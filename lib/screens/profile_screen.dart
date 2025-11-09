@@ -20,6 +20,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
   List<Map<String, dynamic>> _history = [];
   Map<String, Map<String, dynamic>> _listings = {};
   List<Map<String, dynamic>> _userListings = [];
+  List<Map<String, dynamic>> _receivedRequests = [];
   bool _loading = true;
 
   late final AnimationController _staggerController;
@@ -49,6 +50,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
       final ids = history.map((e) => e['listingId'] as String?).whereType<String>().toSet().toList();
       final listingsMap = await FirebaseService.getListingsByIds(ids);
       final myListings = await FirebaseService.getListingsForUser(user.uid);
+  final received = await FirebaseService.getReceivedSwapRequests(user.uid);
 
       if (!mounted) return;
       setState(() {
@@ -57,6 +59,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
         _history = history;
         _listings = listingsMap;
         _userListings = myListings;
+        _receivedRequests = received;
       });
       _staggerController.forward(from: 0);
     } catch (e) {
@@ -147,6 +150,52 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                     ),
                   ),
                   const SizedBox(height: 24),
+
+                  // ── Incoming Swap Requests ───────────────────────────
+                  const Text('Incoming Swap Requests', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 12),
+                  if (_receivedRequests.isEmpty)
+                    const Text('No incoming swap requests', style: TextStyle(color: Colors.white70))
+                  else
+                    ..._receivedRequests.map((req) {
+                      final rid = req['requesterId'] as String? ?? 'unknown';
+                      final lid = req['listingId'] as String? ?? '';
+                      final listing = _listings[lid];
+                      final title = listing != null ? (listing['title'] ?? 'Listing') : (req['listingId'] ?? 'Listing');
+                      return Card(
+                        margin: const EdgeInsets.symmetric(vertical: 6),
+                        child: ListTile(
+                          title: Text('$title'),
+                          subtitle: Text('From: ${rid.substring(0, 8)}'),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              ElevatedButton(
+                                onPressed: () async {
+                                  final sid = req['id'] as String?;
+                                  if (sid == null) return;
+                                  await FirebaseService.acceptSwap(sid);
+                                  await _load();
+                                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Swap accepted')));
+                                },
+                                child: const Text('Accept'),
+                              ),
+                              const SizedBox(width: 8),
+                              OutlinedButton(
+                                onPressed: () async {
+                                  final sid = req['id'] as String?;
+                                  if (sid == null) return;
+                                  await FirebaseService.rejectSwap(sid);
+                                  await _load();
+                                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Swap rejected')));
+                                },
+                                child: const Text('Reject'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }).toList(),
 
                   // ── My Listings ─────────────────────────────────────
                   const Text('My Listings', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600)),

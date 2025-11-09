@@ -41,6 +41,7 @@ class _ListingCardState extends State<ListingCard> with SingleTickerProviderStat
 
   bool _inLibrary = false;
   bool _libLoading = false;
+  bool _isPending = false;
 
   Future<void> _initLibraryState() async {
     try {
@@ -52,6 +53,18 @@ class _ListingCardState extends State<ListingCard> with SingleTickerProviderStat
     } catch (_) {
       // ignore errors for initial state
     }
+    // Also check if the current user already has a pending swap for this listing
+    _checkPendingSwap();
+  }
+
+  Future<void> _checkPendingSwap() async {
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      final id = widget.listing['id']?.toString();
+      if (uid == null || id == null) return;
+      final pendingId = await FirebaseService.findPendingSwap(id, uid);
+      if (mounted) setState(() => _isPending = pendingId != null);
+    } catch (_) {}
   }
 
   void _onTapDown(TapDownDetails _) => _scaleController.reverse();
@@ -197,7 +210,9 @@ class _ListingCardState extends State<ListingCard> with SingleTickerProviderStat
 
                         // Swap Button — create a real swap request and notification
                         ElevatedButton(
-                          onPressed: () async {
+                          onPressed: _isPending
+                              ? null
+                              : () async {
                             final uid = FirebaseAuth.instance.currentUser?.uid;
                             final listingId = widget.listing['id'] as String?;
                             final ownerId = widget.listing['ownerId'] as String?;
@@ -230,6 +245,7 @@ class _ListingCardState extends State<ListingCard> with SingleTickerProviderStat
 
                             try {
                               await FirebaseService.createSwap(listingId, uid, ownerId ?? '');
+                              if (mounted) setState(() => _isPending = true);
                               if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Swap request sent for "$title"'), backgroundColor: const Color(0xFFF0B429)));
                             } catch (e) {
                               if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to send swap request: $e')));
@@ -242,7 +258,7 @@ class _ListingCardState extends State<ListingCard> with SingleTickerProviderStat
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                             elevation: 0,
                           ),
-                          child: const Text('Swap', style: TextStyle(fontWeight: FontWeight.w600)),
+                          child: _isPending ? const Text('Pending', style: TextStyle(fontWeight: FontWeight.w600)) : const Text('Swap', style: TextStyle(fontWeight: FontWeight.w600)),
                         ),
                       ],
                     ),

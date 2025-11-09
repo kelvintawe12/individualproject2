@@ -99,5 +99,32 @@ service cloud.firestore {
       // No arbitrary updates allowed
       allow update: if false;
     }
+
+    // NOTIFICATIONS: users may receive notifications; clients may create
+    // notifications (e.g., swap_request) and recipients may read/list them.
+    match /notifications/{notifId} {
+      // Creation: allow any signed-in user to create a notification document
+      // with required fields. We keep validation minimal to allow client-side
+      // creation (the app creates notifications on swap/request flows).
+      allow create: if isSignedIn()
+        && request.resource.data.recipientId is string
+        && request.resource.data.type is string
+        && request.resource.data.read is bool;
+
+      // Single doc read: only the recipient may read their notification
+      allow get: if isSignedIn() && request.auth.uid == resource.data.recipientId;
+
+      // Queries: only allow queries that filter by recipientId == auth.uid
+      allow list: if isSignedIn() && request.query.where('recipientId', '==', request.auth.uid);
+
+      // Update: allow recipient to mark as read; restrict updates to 'read' and 'readAt'
+      allow update: if isSignedIn()
+        && request.auth.uid == resource.data.recipientId
+        && request.resource.data.keys().hasOnly(['read','readAt'])
+        && request.resource.data.read is bool;
+
+      // Deletion: only recipient may delete their notifications
+      allow delete: if isSignedIn() && request.auth.uid == resource.data.recipientId;
+    }
   }
 }
