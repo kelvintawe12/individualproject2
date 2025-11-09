@@ -4,7 +4,7 @@ This document summarizes the database model, swap state modeling, state manageme
 
 ## Database model (Firestore)
 
-Collections and key fields used in the app:
+Collections and key fields used in the detailed app:
 
 - users/{uid}
   - displayName: string
