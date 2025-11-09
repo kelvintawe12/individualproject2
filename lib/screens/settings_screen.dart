@@ -396,9 +396,3 @@ class _AboutDialog extends StatelessWidget {
     );
   }
 }
-
-// ── Bottom Navigation Bar ─────────────────────────────────────
-// SettingsScreen relies on the app's top-level BottomNavigationBar when
-// embedded in the main app scaffold. If you need a standalone bottom nav
-// when pushing SettingsScreen independently, consider wrapping the
-// pushed route with a Scaffold that provides its own BottomNavigationBar.

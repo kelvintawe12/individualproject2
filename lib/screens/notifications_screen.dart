@@ -69,7 +69,18 @@ class _NotificationsScreenState extends State<NotificationsScreen> with TickerPr
         ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () {
+            // If this screen was pushed onto the navigator, pop normally.
+            if (Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+              return;
+            }
+            // Otherwise (likely shown as a top-level tab in the app shell),
+            // request the app shell to switch to the Browse tab using the
+            // root navigator so the top-level route table (MaterialApp)
+            // resolves the '/browse' route.
+            Navigator.of(context, rootNavigator: true).pushNamed('/browse');
+          },
         ),
       ),
       body: RefreshIndicator(

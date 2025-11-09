@@ -59,6 +59,13 @@ class _BookSwapAppState extends State<BookSwapApp> {
       ),
       routes: {
         '/post': (context) => const PostScreen(),
+        '/browse': (context) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            setState(() => _selectedIndex = 0); // Browse slot
+            Navigator.of(context).pop();
+          });
+          return const SizedBox.shrink();
+        },
         // When a top-level route requests a tab (e.g. '/chats' or '/library')
         // we temporarily push a blank route which, on the next frame, tells
         // the app shell to switch tabs and then immediately pops the blank
