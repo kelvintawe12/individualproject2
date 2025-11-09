@@ -111,11 +111,14 @@ service cloud.firestore {
         && request.resource.data.type is string
         && request.resource.data.read is bool;
 
-      // Single doc read: only the recipient may read their notification
-      allow get: if isSignedIn() && request.auth.uid == resource.data.recipientId;
+      // Single doc read: allow any signed-in user to read notifications.
+      // NOTE: this relaxes the recipient-only restriction for development
+      // convenience. For production keep recipient-only reads.
+      allow get: if isSignedIn();
 
-      // Queries: only allow queries that filter by recipientId == auth.uid
-      allow list: if isSignedIn() && request.query.where('recipientId', '==', request.auth.uid);
+      // Queries: allow authenticated users to query notifications. For
+      // production you may want to require filtering by recipientId == auth.uid.
+      allow list: if isSignedIn();
 
       // Update: allow recipient to mark as read; restrict updates to 'read' and 'readAt'
       allow update: if isSignedIn()
