@@ -393,6 +393,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                         ),
                       const SizedBox(width: 8),
                       FloatingActionButton(
+                        heroTag: 'send-${widget.chatId}',
                         onPressed: _sendMessage,
                         mini: true,
                         backgroundColor: const Color(0xFFF0B429),

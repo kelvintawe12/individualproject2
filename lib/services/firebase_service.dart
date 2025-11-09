@@ -328,40 +328,7 @@ class FirebaseService {
   static Future<void> acceptSwap(String swapId) async {
     final ref = FirebaseFirestore.instance.collection('swaps').doc(swapId);
     final payload = {'status': 'accepted', 'acceptedAt': FieldValue.serverTimestamp()};
-    // Build a safe payload that only contains allowed update fields and
-    // sanitizes values to Firestore-serializable types. This avoids sending
-    // malformed objects across the webchannel which can result in HTTP 400.
-    Map<String, dynamic> _buildSafePayload(Map<String, dynamic> src, List<String> allowed) {
-      Map<String, dynamic> out = {};
-      dynamic _sanitize(dynamic v) {
-        if (v == null) return null;
-        if (v is num || v is bool || v is String) return v;
-        if (v is Timestamp) return v;
-        if (v is DateTime) return Timestamp.fromDate(v);
-        if (v is FieldValue) return v;
-        if (v is Map) {
-          final m = <String, dynamic>{};
-          v.forEach((key, val) {
-            final sv = _sanitize(val);
-            if (sv != null) m[key.toString()] = sv;
-          });
-          return m;
-        }
-        if (v is Iterable) {
-          final l = v.map((e) => _sanitize(e)).where((e) => e != null).toList();
-          return l;
-        }
-        // Unknown/unserializable types are omitted (return null) to be safe.
-        return null;
-      }
-
-      for (final k in allowed) {
-        if (!src.containsKey(k)) continue;
-        final sv = _sanitize(src[k]);
-        if (sv != null) out[k] = sv;
-      }
-      return out;
-    }
+    // (Sanitizer removed — using minimalPayload approach instead)
     // Basic validation and richer diagnostics before performing the update.
     if (swapId.trim().isEmpty) {
       if (kDebugMode) debugPrint('[FirebaseService] acceptSwap called with empty swapId');
@@ -386,9 +353,12 @@ class FirebaseService {
         }
       }
 
-  final safe = _buildSafePayload(payload, ['status', 'acceptedAt']);
-  if (kDebugMode) debugPrint('[FirebaseService] acceptSwap safePayload=$safe');
-  await ref.update(safe);
+  // Hard-fix: always use a minimal, proven-safe payload for the update to avoid
+  // webchannel 400 errors caused by unexpected field types. This keeps the
+  // diagnostic logging above while guaranteeing the write payload is valid.
+  final minimalPayload = {'status': 'accepted', 'acceptedAt': FieldValue.serverTimestamp()};
+  if (kDebugMode) debugPrint('[FirebaseService] acceptSwap minimalPayload=$minimalPayload');
+  await ref.update(minimalPayload);
       if (kDebugMode) debugPrint('[FirebaseService] acceptSwap update completed for $swapId');
     } on FirebaseException catch (fe) {
       if (kDebugMode) debugPrint('[FirebaseService] acceptSwap FirebaseException: code=${fe.code} message=${fe.message}');
@@ -802,10 +772,16 @@ class FirebaseService {
     try {
       final batch = firestore.batch();
       batch.set(msgRef, payload);
-      batch.update(chatRef, {
+      final updatePayload = {
         'lastMessage': (t.isNotEmpty ? t : (i.isNotEmpty ? '[image]' : '')),
         'lastSentAt': FieldValue.serverTimestamp(),
-      });
+      };
+      batch.update(chatRef, updatePayload);
+      if (kDebugMode) {
+        debugPrint('[FirebaseService] sendMessage preparing batch commit for chatId=$chatId senderId=$senderId');
+        debugPrint('[FirebaseService] sendMessage messagePayload=$payload');
+        debugPrint('[FirebaseService] sendMessage chatUpdatePayload=$updatePayload');
+      }
       await batch.commit();
     } on FirebaseException catch (fe) {
       // Log full FirebaseException details for debugging (includes code/message).
