@@ -139,7 +139,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> with TickerPr
                       String title = '';
                       String subtitle = '';
                       IconData icon = Icons.notifications;
-
                       if (type == 'login') {
                         icon = Icons.login;
                         title = 'Signed in';
@@ -189,11 +188,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> with TickerPr
                         onDelete: () => _deleteNotificationById(doc['id'] as String),
                       );
 
-                      // If this is a swap_request and the current user is the recipient (owner), show accept/reject actions inline.
                       final isSwapRequest = type == 'swap_request';
                       final swapId = payload['swapId'] as String?;
+                      final ownerId = payload['ownerId'] as String?;
 
-                      if (!isSwapRequest || swapId == null) return widgetCard;
+                      if (!isSwapRequest || swapId == null || ownerId == null || ownerId != uid) return widgetCard;
 
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -202,7 +201,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> with TickerPr
                           Padding(
                             padding: const EdgeInsets.only(left: 16.0, right: 16.0, bottom: 8.0),
                             child: Row(
-                              mainAxisAlignment: MainAxisAlignment.end,
                               children: [
                                 OutlinedButton(
                                   onPressed: () async {
