@@ -34,6 +34,22 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     super.initState();
     // If we already know the other user (direct chat), prefetch their profile
     if (widget.otherUserId != null) {
+      // Ensure the deterministic direct-chat document exists and contains
+      // participants. This prevents permission-denied errors when opening
+      // a direct chat where the chat doc hasn't been created yet.
+      (() async {
+        try {
+          final me = FirebaseAuth.instance.currentUser?.uid;
+          if (me != null) {
+            // getOrCreateDirectChat will create the chat doc if missing and
+            // return the deterministic id. We don't need the return value
+            // here (widget.chatId is already the deterministic id), but
+            // calling it ensures the `participants` array is present.
+            await FirebaseService.getOrCreateDirectChat(me, widget.otherUserId!);
+          }
+        } catch (_) {}
+      })();
+
       FirebaseService.getUsersByIds([widget.otherUserId!]).then((m) {
         if (mounted) setState(() => _userProfiles.addAll(m));
       }).catchError((_) {});

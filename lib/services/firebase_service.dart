@@ -729,11 +729,27 @@ class FirebaseService {
       // `create` rules. If the document already exists, set() may be treated
       // as an update and fail due to rules; in that case we catch and return
       // the deterministic id so callers can navigate to the existing chat.
-      await ref.set({
+      final payload = {
         'participants': [uidA, uidB],
         'lastMessage': '',
         'lastSentAt': FieldValue.serverTimestamp(),
-      });
+        'createdBy': FirebaseAuth.instance.currentUser?.uid,
+      };
+      if (kDebugMode) debugPrint('[FirebaseService] getOrCreateDirectChat attempting set() for chatId=$id payload=$payload currentUser=${FirebaseAuth.instance.currentUser?.uid}');
+      try {
+        await ref.set(payload);
+      } on FirebaseException catch (fe) {
+        if (kDebugMode) debugPrint('[FirebaseService] getOrCreateDirectChat set() failed: code=${fe.code} message=${fe.message}');
+        // Try to read the existing document to help diagnose rule rejections
+        try {
+          final existing = await ref.get();
+          if (kDebugMode) debugPrint('[FirebaseService] getOrCreateDirectChat - existing.exists=${existing.exists} data=${existing.data()}');
+        } catch (e2) {
+          if (kDebugMode) debugPrint('[FirebaseService] getOrCreateDirectChat - failed to read existing doc after set() failure: $e2');
+        }
+        rethrow;
+      }
+      return ref.id;
     } catch (e) {
       // If creation failed due to insufficient permissions because the doc
       // already exists or other rule constraints, return the id anyway so
@@ -780,6 +796,28 @@ class FirebaseService {
       // Enhanced debug: print current auth uid (helps diagnose permission-denied)
       final currentUser = FirebaseAuth.instance.currentUser;
       if (kDebugMode) debugPrint('[FirebaseService] sendMessage currentUser.uid=${currentUser?.uid ?? 'null'}');
+
+      // Proactively verify the chat document and participants before attempting
+      // the batched write. This produces a clearer debug message when the
+      // calling user isn't a participant and avoids opaque permission-denied
+      // failures from the server.
+      try {
+        final chatSnap = await chatRef.get();
+        if (!chatSnap.exists) {
+          if (kDebugMode) debugPrint('[FirebaseService] sendMessage aborted: chat $chatId does not exist');
+          throw FirebaseException(plugin: 'cloud_firestore', message: 'Chat not found', code: 'not-found');
+        }
+        final participants = List<String>.from(chatSnap.data()?['participants'] ?? []);
+        if (!participants.contains(senderId)) {
+          if (kDebugMode) debugPrint('[FirebaseService] sendMessage aborted: sender $senderId is not a participant of chat $chatId. participants=$participants');
+          throw FirebaseException(plugin: 'cloud_firestore', message: 'Missing permission: sender not a participant', code: 'permission-denied');
+        }
+      } catch (e) {
+        // Re-throw FirebaseExceptions; wrap other errors for clarity.
+        if (e is FirebaseException) rethrow;
+        if (kDebugMode) debugPrint('[FirebaseService] sendMessage chat pre-check failed: $e');
+        rethrow;
+      }
 
       // Sanitize payloads to ensure only Firestore-serializable types are sent
       final sanitizedMessage = _sanitizeForFirestore(payload);
