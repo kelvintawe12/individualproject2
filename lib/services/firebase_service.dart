@@ -155,7 +155,14 @@ class FirebaseService {
     final payload = Map<String, dynamic>.from(data);
     payload['type'] = payload['type'] ?? 'user'; // Default to 'user' if not specified
     payload['createdAt'] = FieldValue.serverTimestamp();
-    await col.add(payload);
+    try {
+      await col.add(payload);
+    } on FirebaseException catch (fe) {
+      if (kDebugMode) {
+        debugPrint('[FirebaseService] createListing FirebaseException: code=${fe.code} message=${fe.message} payload=$payload');
+      }
+      rethrow;
+    }
   }
 
   /// Example: listen to listings collection and call onData with documents.
@@ -180,45 +187,58 @@ class FirebaseService {
         // Return the existing pending swap id and avoid creating another notification
         return existing.docs.first.id;
       }
+    } on FirebaseException catch (fe) {
+      if (kDebugMode) debugPrint('[FirebaseService] createSwap dedupe check FirebaseException: code=${fe.code} message=${fe.message}');
+      // Proceed to create swap if dedupe check fails
     } catch (e) {
       if (kDebugMode) debugPrint('[FirebaseService] createSwap dedupe check failed: $e');
       // Proceed to create swap if dedupe check fails
     }
 
-    final doc = await col.add({
-      'listingId': listingId,
-      'requesterId': requesterId,
-      'ownerId': ownerId,
-      'status': 'pending',
-      'createdAt': FieldValue.serverTimestamp(),
-    });
-
-    // Create a notification for the owner to inform them of the swap request.
     try {
-      await createNotification(ownerId, 'swap_request', {
-        'swapId': doc.id,
+      final doc = await col.add({
         'listingId': listingId,
         'requesterId': requesterId,
+        'ownerId': ownerId,
+        'status': 'pending',
+        'createdAt': FieldValue.serverTimestamp(),
       });
-    } catch (e) {
-      if (kDebugMode) debugPrint('[FirebaseService] failed to create swap notification: $e');
-    }
 
-    return doc.id;
+      // Create a notification for the owner to inform them of the swap request.
+      try {
+        await createNotification(ownerId, 'swap_request', {
+          'swapId': doc.id,
+          'listingId': listingId,
+          'requesterId': requesterId,
+        });
+      } catch (e) {
+        if (kDebugMode) debugPrint('[FirebaseService] failed to create swap notification: $e');
+      }
+
+      return doc.id;
+    } on FirebaseException catch (fe) {
+      if (kDebugMode) debugPrint('[FirebaseService] createSwap FirebaseException: code=${fe.code} message=${fe.message} listingId=$listingId requesterId=$requesterId ownerId=$ownerId');
+      rethrow;
+    }
   }
 
   /// Create a notification document for a recipient user.
   /// Notification payload is a map with arbitrary keys specific to the type.
   static Future<String> createNotification(String recipientId, String type, Map<String, dynamic> payload) async {
     final col = FirebaseFirestore.instance.collection('notifications');
-    final doc = await col.add({
-      'recipientId': recipientId,
-      'type': type,
-      'payload': payload,
-      'read': false,
-      'createdAt': FieldValue.serverTimestamp(),
-    });
-    return doc.id;
+    try {
+      final doc = await col.add({
+        'recipientId': recipientId,
+        'type': type,
+        'payload': payload,
+        'read': false,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      return doc.id;
+    } on FirebaseException catch (fe) {
+      if (kDebugMode) debugPrint('[FirebaseService] createNotification FirebaseException: code=${fe.code} message=${fe.message} recipient=$recipientId type=$type payload=$payload');
+      rethrow;
+    }
   }
 
   /// Listen to notifications for a specific user, ordered by newest first.
