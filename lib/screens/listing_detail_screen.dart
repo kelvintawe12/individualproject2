@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:lottie/lottie.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../presentation/bloc/listing_cubit.dart';
+import '../presentation/bloc/listing_state.dart';
 import '../services/firebase_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -9,15 +12,27 @@ class ListingDetailScreen extends StatefulWidget {
   final Map<String, dynamic>? listing;
   final String heroTag;
 
-  const ListingDetailScreen({Key? key, this.listing, this.heroTag = 'coverHero'}) : super(key: key);
+  const ListingDetailScreen({super.key, this.listing, this.heroTag = 'coverHero'});
 
   @override
   State<ListingDetailScreen> createState() => _ListingDetailScreenState();
 }
 
 class _ListingDetailScreenState extends State<ListingDetailScreen> {
-  bool _isPending = false;
-  bool _isAccepted = false;
+  @override
+  void initState() {
+    super.initState();
+    // Load initial per-listing state into the ListingCubit so the UI
+    // can react to pending/bookmark flags instead of using local setState.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final listingId = widget.listing?['id'] as String?;
+      if (listingId != null) {
+        try {
+          context.read<ListingCubit>().loadInitial(listingId);
+        } catch (_) {}
+      }
+    });
+  }
 
   String _humanStatus(String? s) {
     switch (s) {
@@ -46,7 +61,9 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
-  final isOwner = user != null && widget.listing != null && widget.listing!['ownerId'] == user.uid;
+    final listingId = widget.listing?['id'] as String?;
+    final isOwner = user != null && widget.listing != null && widget.listing!['ownerId'] == user.uid;
+    final listingState = (listingId != null) ? (context.watch<ListingCubit>().state[listingId] ?? const ListingState()) : const ListingState();
 
     return Scaffold(
       appBar: AppBar(
@@ -91,10 +108,12 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
                     if (accept == true) {
                       await FirebaseService.acceptSwap(swapId);
                       if (!mounted) return;
-                      setState(() {
-                        _isAccepted = true;
-                        _isPending = false;
-                      });
+                      // Update cubit state so UI no longer shows pending and can show accepted banner
+                      if (listingId != null) {
+                        try {
+                          context.read<ListingCubit>().markAccepted(listingId);
+                        } catch (_) {}
+                      }
                       if (!mounted) return;
                       await showDialog<void>(
                         context: context,
@@ -220,7 +239,7 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
             const Spacer(),
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 300),
-              child: _isPending
+        child: listingState.isPending
                   ? ElevatedButton(
                       key: const ValueKey('pending'),
                       onPressed: () async {
@@ -235,11 +254,15 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
                             ],
                           ),
                         );
-                                                  if (cancel == true) {
-                                                  setState(() => _isPending = false);
-                                                  if (!mounted) return;
-                                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Offer cancelled (mock)')));
-                                                }
+                        if (cancel == true) {
+                          if (listingId != null) {
+                            try {
+                              context.read<ListingCubit>().clearPending(listingId);
+                            } catch (_) {}
+                          }
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Offer cancelled (mock)')));
+                        }
                       },
                       style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[600], padding: const EdgeInsets.symmetric(vertical: 16)),
                       child: const Text('Pending — Cancel'))
@@ -268,63 +291,66 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
                                   if (currentUid == null) {
                                     if (!mounted) return;
                                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please sign in to request a swap')));
-                                    setState(() => _isPending = false);
+                                    // nothing to update in cubit
                                     return;
                                   }
                                   if (ownerId == null || listingId == null) {
                                     if (!mounted) return;
                                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Listing is not available')));
-                                    setState(() => _isPending = false);
                                     return;
                                   }
                                   if (ownerId == currentUid) {
                                     if (!mounted) return;
                                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('You cannot request your own listing')));
-                                    setState(() => _isPending = false);
                                     return;
                                   }
 
                                   // attempt to create swap (dedupe handled inside service)
                                   try {
-                                    final swapId = await FirebaseService.createSwap(listingId, currentUid, ownerId);
-                                    // Read the swap doc to determine status
-                                    final snap = await FirebaseFirestore.instance.collection('swaps').doc(swapId).get();
-                                    final status = snap.exists ? (snap.data()?['status'] as String?) : null;
-                                    if (status == 'pending') {
-                                      if (!mounted) return;
-                                      setState(() => _isPending = true);
-                                      // show Lottie success dialog
-                                      await showDialog<void>(
-                                        context: context,
-                                        builder: (_) => AlertDialog(
-                                          content: Column(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              SizedBox(
-                                                width: 140,
-                                                height: 140,
-                                                child: Center(child: Lottie.network('https://assets10.lottiefiles.com/packages/lf20_jbrw3hcz.json')),
-                                              ),
-                                              const SizedBox(height: 8),
-                                              const Text('Swap request sent!')
-                                            ],
+                                    // Delegate creation to the cubit so it both creates the swap
+                                    // and updates the local UI state (isPending=true) on success.
+                                    final swapId = await context.read<ListingCubit>().createSwap(listingId, ownerId);
+                                    if (swapId != null) {
+                                      // Read the swap to determine final status and show UX hooks
+                                      final snap = await FirebaseFirestore.instance.collection('swaps').doc(swapId).get();
+                                      final status = snap.exists ? (snap.data()?['status'] as String?) : null;
+                                      if (status == 'pending') {
+                                        if (!mounted) return;
+                                        // cubit already set isPending=true on success; show success dialog
+                                        await showDialog<void>(
+                                          context: context,
+                                          builder: (_) => AlertDialog(
+                                            content: Column(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                SizedBox(
+                                                  width: 140,
+                                                  height: 140,
+                                                  child: Center(child: Lottie.network('https://assets10.lottiefiles.com/packages/lf20_jbrw3hcz.json')),
+                                                ),
+                                                const SizedBox(height: 8),
+                                                const Text('Swap request sent!')
+                                              ],
+                                            ),
+                                            actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('OK'))],
                                           ),
-                                          actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('OK'))],
-                                        ),
-                                      );
-                                    } else if (status == 'accepted') {
-                                      if (!mounted) return;
-                                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('This swap has already been accepted')));
-                                    } else if (status == 'rejected') {
-                                      if (!mounted) return;
-                                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('This swap was previously rejected')));
+                                        );
+                                      } else if (status == 'accepted') {
+                                        if (!mounted) return;
+                                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('This swap has already been accepted')));
+                                      } else if (status == 'rejected') {
+                                        if (!mounted) return;
+                                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('This swap was previously rejected')));
+                                      } else {
+                                        if (!mounted) return;
+                                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Swap request status updated')));
+                                      }
                                     } else {
                                       if (!mounted) return;
-                                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Swap request status updated')));
+                                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to create swap request')));
                                     }
                                   } catch (e) {
                                     if (!mounted) return;
-                                    setState(() => _isPending = false);
                                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to send swap request: $e')));
                                   }
                                 }
@@ -333,7 +359,7 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
                           child: const Text('Request Swap'),
                         ),
                         const SizedBox(height: 12),
-                        if (_isAccepted)
+                        if (listingState.isAccepted)
                           Container(
                             padding: const EdgeInsets.symmetric(vertical: 12),
                             decoration: BoxDecoration(color: Colors.green[200], borderRadius: BorderRadius.circular(8)),

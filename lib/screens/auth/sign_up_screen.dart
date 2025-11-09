@@ -6,7 +6,7 @@ import 'package:lottie/lottie.dart';
 import '../../services/firebase_service.dart';
 
 class SignUpScreen extends StatefulWidget {
-  const SignUpScreen({Key? key}) : super(key: key);
+  const SignUpScreen({super.key});
 
   @override
   State<SignUpScreen> createState() => _SignUpScreenState();
@@ -375,7 +375,7 @@ class _SignUpScreenState extends State<SignUpScreen>
 
 // ── Verification dialog (re‑usable) ─────────────────────────────────────
 class _VerificationDialog extends StatelessWidget {
-  const _VerificationDialog({Key? key}) : super(key: key);
+  const _VerificationDialog({super.key});
 
   @override
   Widget build(BuildContext context) {

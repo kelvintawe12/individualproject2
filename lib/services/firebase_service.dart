@@ -84,6 +84,19 @@ class FirebaseService {
     }
   }
 
+  /// Safe helper to get current user id or null.
+  static String? _safeCurrentUid() {
+    try {
+      return FirebaseAuth.instance.currentUser?.uid;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Public wrapper to get current user id or null. Use this from other
+  /// libraries instead of the private helper above.
+  static String? safeCurrentUid() => _safeCurrentUid();
+
   /// Sign up with email/password. Return user id or throw.
   static Future<String> signUp(String email, String password) async {
     final cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(email: email, password: password);
@@ -1021,7 +1034,7 @@ class FirebaseService {
       }
       if (value is Map) {
         final out = <String, dynamic>{};
-        (value as Map).forEach((k, v) {
+        value.forEach((k, v) {
           try {
             final key = k.toString();
             out[key] = _sanitizeForFirestore(v);

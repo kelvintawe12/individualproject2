@@ -26,6 +26,8 @@ dependencies:
   uuid: ^4.5.2
   shared_preferences: ^2.3.2
   intl: ^0.19.0  # For time formatting (e.g., "3 days ago")
+  # State management
+  flutter_bloc: ^8.1.3
 
 dev_dependencies:
   flutter_test:

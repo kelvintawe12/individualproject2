@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../services/library_service.dart';
-import '../services/firebase_service.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../presentation/bloc/listing_state.dart';
+import '../presentation/bloc/listing_cubit.dart';
 import 'dart:ui' as ui; // Required for ImageFilter
 import '../screens/listing_detail_screen.dart';
 
 class ListingCard extends StatefulWidget {
-  const ListingCard({Key? key, required this.listing}) : super(key: key);
+  const ListingCard({super.key, required this.listing});
   final Map<String, dynamic> listing;
 
   @override
@@ -29,8 +30,11 @@ class _ListingCardState extends State<ListingCard> with SingleTickerProviderStat
     );
     _scaleAnimation = CurvedAnimation(parent: _scaleController, curve: Curves.easeOut);
     _scaleController.value = 1.0;
-    // initialize library state
-    _initLibraryState();
+    // initialize listing shared state via ListingCubit
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final id = widget.listing['id']?.toString();
+      if (id != null) context.read<ListingCubit>().loadInitial(id);
+    });
   }
 
   @override
@@ -39,33 +43,9 @@ class _ListingCardState extends State<ListingCard> with SingleTickerProviderStat
     super.dispose();
   }
 
-  bool _inLibrary = false;
-  bool _libLoading = false;
-  bool _isPending = false;
+  // local UI no longer stores shared listing flags; ListingCubit does.
 
-  Future<void> _initLibraryState() async {
-    try {
-      final uid = FirebaseAuth.instance.currentUser?.uid;
-      final id = widget.listing['id']?.toString();
-      if (uid == null || id == null) return;
-      final exists = await LibraryService.isInLibrary(uid, id);
-      if (mounted) setState(() => _inLibrary = exists);
-    } catch (_) {
-      // ignore errors for initial state
-    }
-    // Also check if the current user already has a pending swap for this listing
-    _checkPendingSwap();
-  }
-
-  Future<void> _checkPendingSwap() async {
-    try {
-      final uid = FirebaseAuth.instance.currentUser?.uid;
-      final id = widget.listing['id']?.toString();
-      if (uid == null || id == null) return;
-      final pendingId = await FirebaseService.findPendingSwap(id, uid);
-      if (mounted) setState(() => _isPending = pendingId != null);
-    } catch (_) {}
-  }
+  // listing state is managed by ListingCubit
 
   void _onTapDown(TapDownDetails _) => _scaleController.reverse();
   void _onTapUp(TapUpDetails _) => _scaleController.forward();
@@ -169,96 +149,111 @@ class _ListingCardState extends State<ListingCard> with SingleTickerProviderStat
                     Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // Bookmark / Library toggle
-                        IconButton(
-                          icon: _libLoading
-                              ? SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white70))
-                              : Icon(_inLibrary ? Icons.bookmark : Icons.bookmark_border, color: _inLibrary ? const Color(0xFFF0B429) : Colors.white70),
-                          onPressed: () async {
-                            final uid = FirebaseAuth.instance.currentUser?.uid;
-                            final id = widget.listing['id']?.toString();
-                            if (uid == null) {
-                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sign in to save to your library')));
-                              return;
-                            }
-                            if (id == null) {
-                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Listing has no id')));
-                              return;
-                            }
+                        // Bookmark / Library toggle (driven by ListingCubit)
+                        BlocBuilder<ListingCubit, Map<String, ListingState>>(
+                          builder: (context, mapState) {
+                            final lid = widget.listing['id']?.toString();
+                            final typedState = lid != null ? mapState[lid] : null;
+                            final effectiveInLibrary = typedState?.inLibrary ?? false;
+                            final effectiveLibLoading = typedState?.libLoading ?? false;
 
-                            setState(() => _libLoading = true);
-                            try {
-                              if (!_inLibrary) {
-                                await LibraryService.addToLibrary(uid, id);
-                                if (mounted) setState(() => _inLibrary = true);
-                                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Added "$title" to your library'), backgroundColor: const Color(0xFFF0B429)));
-                              } else {
-                                await LibraryService.removeFromLibrary(uid, id);
-                                if (mounted) setState(() => _inLibrary = false);
-                                if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Removed from your library')));
-                              }
-                            } catch (e) {
-                              if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
-                            } finally {
-                              if (mounted) setState(() => _libLoading = false);
-                            }
+                            return IconButton(
+                              icon: effectiveLibLoading
+                                  ? SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white70))
+                                  : Icon(effectiveInLibrary ? Icons.bookmark : Icons.bookmark_border, color: effectiveInLibrary ? const Color(0xFFF0B429) : Colors.white70),
+                              onPressed: () async {
+                                final uid = FirebaseAuth.instance.currentUser?.uid;
+                                final id = widget.listing['id']?.toString();
+                                final scaffold = ScaffoldMessenger.of(context);
+                                final cubit = context.read<ListingCubit>();
+                                if (uid == null) {
+                                  scaffold.showSnackBar(const SnackBar(content: Text('Sign in to save to your library')));
+                                  return;
+                                }
+                                if (id == null) {
+                                  scaffold.showSnackBar(const SnackBar(content: Text('Listing has no id')));
+                                  return;
+                                }
+
+                                // Delegate to ListingCubit which will update state and perform the service call.
+                                await cubit.toggleInLibrary(id);
+                                final after = cubit.state[id];
+                                if (after != null && after.inLibrary) {
+                                  if (mounted) scaffold.showSnackBar(SnackBar(content: Text('Added "$title" to your library'), backgroundColor: const Color(0xFFF0B429)));
+                                } else {
+                                  if (mounted) scaffold.showSnackBar(const SnackBar(content: Text('Removed from your library')));
+                                }
+                              },
+                              tooltip: effectiveInLibrary ? 'Remove from library' : 'Add to library',
+                            );
                           },
-                          tooltip: _inLibrary ? 'Remove from library' : 'Add to library',
                         ),
 
                         const SizedBox(height: 8),
 
-                        // Swap Button — create a real swap request and notification
-                        ElevatedButton(
-                          onPressed: _isPending
-                              ? null
-                              : () async {
-                            final uid = FirebaseAuth.instance.currentUser?.uid;
-                            final listingId = widget.listing['id'] as String?;
-                            final ownerId = widget.listing['ownerId'] as String?;
-                            if (uid == null) {
-                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please sign in to request a swap')));
-                              return;
-                            }
-                            if (ownerId == uid) {
-                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('You cannot request your own listing')));
-                              return;
-                            }
-                            if (listingId == null) {
-                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Listing has no id')));
-                              return;
-                            }
+                        // Swap Button — create a real swap request and notification (driven by ListingCubit)
+                        BlocBuilder<ListingCubit, Map<String, ListingState>>(
+                          builder: (context, map) {
+                            final lid = widget.listing['id']?.toString();
+                            final typedState = lid != null ? map[lid] : null;
+                            final isPending = typedState?.isPending ?? false;
 
-                            // Confirm
-                            final confirm = await showDialog<bool>(
-                              context: context,
-                              builder: (_) => AlertDialog(
-                                title: const Text('Request Swap'),
-                                content: Text('Send a swap request to the owner for "${title}"?'),
-                                actions: [
-                                  TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('No')),
-                                  ElevatedButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Yes')),
-                                ],
+                            return ElevatedButton(
+                              onPressed: isPending
+                                  ? null
+                                  : () async {
+                                final uid = FirebaseAuth.instance.currentUser?.uid;
+                                final listingId = widget.listing['id'] as String?;
+                                final ownerId = widget.listing['ownerId'] as String?;
+                                final scaffold = ScaffoldMessenger.of(context);
+                                final cubit = context.read<ListingCubit>();
+                                if (uid == null) {
+                                  scaffold.showSnackBar(const SnackBar(content: Text('Please sign in to request a swap')));
+                                  return;
+                                }
+                                if (ownerId == uid) {
+                                  scaffold.showSnackBar(const SnackBar(content: Text('You cannot request your own listing')));
+                                  return;
+                                }
+                                if (listingId == null) {
+                                  scaffold.showSnackBar(const SnackBar(content: Text('Listing has no id')));
+                                  return;
+                                }
+
+                                // Confirm
+                                final confirm = await showDialog<bool>(
+                                  context: context,
+                                  builder: (_) => AlertDialog(
+                                    title: const Text('Request Swap'),
+                                    content: Text('Send a swap request to the owner for "$title"?'),
+                                    actions: [
+                                      TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('No')),
+                                      ElevatedButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Yes')),
+                                    ],
+                                  ),
+                                );
+                                if (confirm != true) return;
+
+                                try {
+                                  await cubit.createSwap(listingId, ownerId ?? '');
+                                  final after = cubit.state[listingId];
+                                  if (after != null && after.isPending) {
+                                    if (mounted) scaffold.showSnackBar(SnackBar(content: Text('Swap request sent for "$title"'), backgroundColor: const Color(0xFFF0B429)));
+                                  }
+                                } catch (e) {
+                                  if (mounted) scaffold.showSnackBar(SnackBar(content: Text('Failed to send swap request: $e')));
+                                }
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFFF0B429),
+                                foregroundColor: Colors.black87,
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                elevation: 0,
                               ),
+                              child: isPending ? const Text('Pending', style: TextStyle(fontWeight: FontWeight.w600)) : const Text('Swap', style: TextStyle(fontWeight: FontWeight.w600)),
                             );
-                            if (confirm != true) return;
-
-                            try {
-                              await FirebaseService.createSwap(listingId, uid, ownerId ?? '');
-                              if (mounted) setState(() => _isPending = true);
-                              if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Swap request sent for "$title"'), backgroundColor: const Color(0xFFF0B429)));
-                            } catch (e) {
-                              if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to send swap request: $e')));
-                            }
                           },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFFF0B429),
-                            foregroundColor: Colors.black87,
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                            elevation: 0,
-                          ),
-                          child: _isPending ? const Text('Pending', style: TextStyle(fontWeight: FontWeight.w600)) : const Text('Swap', style: TextStyle(fontWeight: FontWeight.w600)),
                         ),
                       ],
                     ),
@@ -293,7 +288,7 @@ class _ListingCardState extends State<ListingCard> with SingleTickerProviderStat
 // ── Condition Badge (Reusable) ─────────────────────────────────────
 class _ConditionBadge extends StatelessWidget {
   final String condition;
-  const _ConditionBadge({required this.condition});
+  const _ConditionBadge({super.key, required this.condition});
 
   @override
   Widget build(BuildContext context) {

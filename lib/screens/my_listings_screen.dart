@@ -3,7 +3,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:ui' as ui;
 import '../services/firebase_service.dart';
-import '../services/library_service.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../presentation/bloc/listing_cubit.dart';
+import '../presentation/bloc/listing_state.dart';
 import 'post_screen.dart';
 import 'edit_listing_screen.dart';
 import 'browse_screen.dart';
@@ -374,8 +376,6 @@ class _GlassListingCard extends StatefulWidget {
 }
 
 class _GlassListingCardState extends State<_GlassListingCard> {
-  bool _inLibrary = false;
-  bool _loading = false;
 
   @override
   void initState() {
@@ -388,8 +388,12 @@ class _GlassListingCardState extends State<_GlassListingCard> {
       final uid = FirebaseAuth.instance.currentUser?.uid;
       final id = widget.listing['id'] as String?;
       if (uid == null || id == null) return;
-      final exists = await LibraryService.isInLibrary(uid, id);
-      if (mounted) setState(() => _inLibrary = exists);
+      // Load initial per-listing flags into the ListingCubit so bookmark state is available
+      if (mounted) {
+        try {
+          context.read<ListingCubit>().loadInitial(id);
+        } catch (_) {}
+      }
     } catch (_) {}
   }
 
@@ -462,39 +466,40 @@ class _GlassListingCardState extends State<_GlassListingCard> {
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
                 ),
-                // Add to Library
-                IconButton(
-                  icon: _loading
-                      ? SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white70))
-                      : Icon(_inLibrary ? Icons.bookmark : Icons.library_add, color: _inLibrary ? const Color(0xFFF0B429) : Colors.white70),
-                  onPressed: () async {
-                    final uid = FirebaseAuth.instance.currentUser?.uid;
-                    final id = widget.listing['id'] as String?;
-                    if (uid == null) {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sign in to save to your library')));
-                      return;
-                    }
-                    if (id == null) return;
-                    setState(() => _loading = true);
-                    try {
-                      if (!_inLibrary) {
-                        await LibraryService.addToLibrary(uid, id);
-                        if (mounted) setState(() => _inLibrary = true);
-                        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Added "${title}" to your library'), backgroundColor: const Color(0xFFF0B429)));
-                      } else {
-                        await LibraryService.removeFromLibrary(uid, id);
-                        if (mounted) setState(() => _inLibrary = false);
-                        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Removed from your library')));
+                // Add to Library (driven by ListingCubit)
+                Builder(builder: (context) {
+                  final id = widget.listing['id'] as String?;
+                  final listingState = (id != null) ? (context.watch<ListingCubit>().state[id] ?? const ListingState()) : const ListingState();
+                  return IconButton(
+                    icon: listingState.libLoading
+                        ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white70))
+                        : Icon(listingState.inLibrary ? Icons.bookmark : Icons.library_add, color: listingState.inLibrary ? const Color(0xFFF0B429) : Colors.white70),
+                    onPressed: () async {
+                      final uid = FirebaseAuth.instance.currentUser?.uid;
+                      final id = widget.listing['id'] as String?;
+                      if (uid == null) {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sign in to save to your library')));
+                        return;
                       }
-                    } catch (e) {
-                      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
-                    } finally {
-                      if (mounted) setState(() => _loading = false);
-                    }
-                  },
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
-                ),
+                      if (id == null) return;
+                      try {
+                        await context.read<ListingCubit>().toggleInLibrary(id);
+                        final updated = context.read<ListingCubit>().state[id] ?? const ListingState();
+                        if (mounted) {
+                          if (updated.inLibrary) {
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Added "${title}" to your library'), backgroundColor: const Color(0xFFF0B429)));
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Removed from your library')));
+                          }
+                        }
+                      } catch (e) {
+                        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
+                      }
+                    },
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                  );
+                }),
               ],
             ),
           ),

@@ -4,13 +4,15 @@ import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:pull_to_refresh/pull_to_refresh.dart';
-import '../services/library_service.dart';
 import '../services/firebase_service.dart'; // Assuming this exists
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../presentation/bloc/listing_cubit.dart';
+import '../presentation/bloc/listing_state.dart';
 import '../widgets/listing_card.dart';
 import 'post_screen.dart'; // Adjust path
 
 class ListingsScreen extends StatefulWidget {
-  const ListingsScreen({Key? key}) : super(key: key);
+  const ListingsScreen({super.key});
 
   @override
   State<ListingsScreen> createState() => _ListingsScreenState();
@@ -360,9 +362,7 @@ class _GlassListingCard extends StatefulWidget {
 }
 
 class _GlassListingCardState extends State<_GlassListingCard>
-    with AutomaticKeepAliveClientMixin {
-  late bool _inLibrary;
-  bool _loading = false;
+  with AutomaticKeepAliveClientMixin {
 
   @override
   bool get wantKeepAlive => true;
@@ -370,30 +370,18 @@ class _GlassListingCardState extends State<_GlassListingCard>
   @override
   void initState() {
     super.initState();
-    _inLibrary = false;
-    _checkLibraryStatus();
+    // Load initial per-listing flags into ListingCubit (bookmark/pending)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final id = widget.listing['id'] as String?;
+      if (id != null) {
+        try {
+          context.read<ListingCubit>().loadInitial(id);
+        } catch (_) {}
+      }
+    });
   }
 
-  Future<void> _checkLibraryStatus() async {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    final id = widget.listing['id'] as String?;
-    if (uid == null || id == null || !mounted) return;
-
-    try {
-      final exists = await LibraryService.isInLibrary(uid, id);
-      if (mounted) {
-        setState(() => _inLibrary = exists);
-      }
-    } catch (e) {
-      // Permission errors or other firestore issues may throw here on web
-      // if security rules are not yet deployed. Fail gracefully and treat
-      // the item as not-in-library. We'll avoid surfacing the raw error
-      // to the layout engine which causes uncaught promise rejections.
-      if (mounted) {
-        setState(() => _inLibrary = false);
-      }
-    }
-  }
+  // library status is managed by ListingCubit; we no longer keep local copy here.
 
   Future<void> _toggleLibrary() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -409,13 +397,14 @@ class _GlassListingCardState extends State<_GlassListingCard>
     if (id == null) return;
 
     HapticFeedback.mediumImpact();
-    setState(() => _loading = true);
 
     try {
-      if (!_inLibrary) {
-        await LibraryService.addToLibrary(uid, id);
-        if (mounted) {
-          setState(() => _inLibrary = true);
+      // Delegate add/remove to ListingCubit which will manage libLoading flag.
+      await context.read<ListingCubit>().toggleInLibrary(id);
+      // After the cubit completes, read the new state and show UX feedback.
+      final updated = context.read<ListingCubit>().state[id] ?? const ListingState();
+      if (mounted) {
+        if (updated.inLibrary) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Added "$title" to your library'),
@@ -423,11 +412,7 @@ class _GlassListingCardState extends State<_GlassListingCard>
               behavior: SnackBarBehavior.floating,
             ),
           );
-        }
-      } else {
-        await LibraryService.removeFromLibrary(uid, id);
-        if (mounted) {
-          setState(() => _inLibrary = false);
+        } else {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Removed from library'),
@@ -442,8 +427,6 @@ class _GlassListingCardState extends State<_GlassListingCard>
           SnackBar(content: Text('Error: $e')),
         );
       }
-    } finally {
-      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -551,30 +534,33 @@ class _GlassListingCardState extends State<_GlassListingCard>
                 SizedBox(
                   width: 48,
                   child: Center(
-                    child: _loading
-                        ? const SizedBox(
-                            width: 28,
-                            height: 28,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2.5,
-                              valueColor:
-                                  AlwaysStoppedAnimation(Color(0xFFF0B429)),
-                            ),
-                          )
-                        : IconButton(
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(),
-                            icon: AnimatedSwitcher(
-                              duration: Duration(milliseconds: 300),
-                              child: Icon(
-                                _inLibrary ? Icons.bookmark : Icons.bookmark_border,
-                                key: ValueKey(_inLibrary),
-                                color: _inLibrary ? const Color(0xFFF0B429) : Colors.white70,
-                                size: 28,
-                              ),
-                            ),
-                            onPressed: _toggleLibrary,
-                          ),
+                      child: Builder(builder: (context) {
+                        final id = widget.listing['id'] as String?;
+                        final listingState = (id != null) ? (context.watch<ListingCubit>().state[id] ?? const ListingState()) : const ListingState();
+                        return listingState.libLoading
+                            ? const SizedBox(
+                                width: 28,
+                                height: 28,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.5,
+                                  valueColor: AlwaysStoppedAnimation(Color(0xFFF0B429)),
+                                ),
+                              )
+                            : IconButton(
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                                icon: AnimatedSwitcher(
+                                  duration: const Duration(milliseconds: 300),
+                                  child: Icon(
+                                    listingState.inLibrary ? Icons.bookmark : Icons.bookmark_border,
+                                    key: ValueKey(listingState.inLibrary),
+                                    color: listingState.inLibrary ? const Color(0xFFF0B429) : Colors.white70,
+                                    size: 28,
+                                  ),
+                                ),
+                                onPressed: _toggleLibrary,
+                              );
+                      }),
                   ),
                 ),
               ],

@@ -10,7 +10,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../services/firebase_service.dart';
 
 class PostScreen extends StatefulWidget {
-  const PostScreen({Key? key}) : super(key: key);
+  const PostScreen({super.key});
 
   @override
   State<PostScreen> createState() => _PostScreenState();
@@ -26,6 +26,8 @@ class _PostScreenState extends State<PostScreen> with TickerProviderStateMixin {
   File? _imageFile;
   Uint8List? _imageBytes; // for web
   double _uploadProgress = 0.0;
+  String? _customImageUrl;
+  final _imageUrlCtrl = TextEditingController();
 
   final ImagePicker _picker = ImagePicker();
 
@@ -50,6 +52,7 @@ class _PostScreenState extends State<PostScreen> with TickerProviderStateMixin {
     _titleCtrl.dispose();
     _authorCtrl.dispose();
     _swapForCtrl.dispose();
+    _imageUrlCtrl.dispose();
     _fadeController.dispose();
     _slideController.dispose();
     super.dispose();
@@ -64,11 +67,13 @@ class _PostScreenState extends State<PostScreen> with TickerProviderStateMixin {
           setState(() {
             _imageBytes = bytes;
             _imageFile = null;
+            _customImageUrl = null;
           });
         } else {
           setState(() {
             _imageFile = File(picked.path);
             _imageBytes = null;
+            _customImageUrl = null;
           });
         }
       }
@@ -119,6 +124,11 @@ class _PostScreenState extends State<PostScreen> with TickerProviderStateMixin {
           debugPrint('[PostScreen] upload timeout: $t');
           rethrow;
         }
+      }
+
+      // If user supplied a direct image URL (and didn't upload a file), use it
+      if ((imageUrl == null || imageUrl.isEmpty) && _customImageUrl != null && Uri.tryParse(_customImageUrl!)?.hasScheme == true) {
+        imageUrl = _customImageUrl;
       }
 
       final ownerId = _isLibraryBook ? 'library' : (FirebaseAuth.instance.currentUser?.uid ?? 'anonymous');
@@ -202,7 +212,7 @@ class _PostScreenState extends State<PostScreen> with TickerProviderStateMixin {
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             // Preview Card
-                            if (_titleCtrl.text.isNotEmpty || _imageFile != null || _imageBytes != null)
+                            if (_titleCtrl.text.isNotEmpty || _imageFile != null || _imageBytes != null || (_customImageUrl != null && _customImageUrl!.isNotEmpty))
                               _BookPreviewCard(
                                 title: _titleCtrl.text,
                                 author: _authorCtrl.text,
@@ -210,6 +220,7 @@ class _PostScreenState extends State<PostScreen> with TickerProviderStateMixin {
                                 swapFor: _swapForCtrl.text,
                                 imageFile: _imageFile,
                                 imageBytes: _imageBytes,
+                                imageUrl: _customImageUrl,
                               ),
                             const SizedBox(height: 16),
 
@@ -290,17 +301,102 @@ class _PostScreenState extends State<PostScreen> with TickerProviderStateMixin {
                                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                                   ),
                                 ),
+                                const SizedBox(width: 8),
+                                OutlinedButton.icon(
+                                  onPressed: () => showDialog(
+                                    context: context,
+                                    builder: (_) => AlertDialog(
+                                      backgroundColor: const Color(0xFF1E293B),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                      title: const Text('Paste Image URL', style: TextStyle(color: Colors.white)),
+                                      content: TextField(
+                                        controller: _imageUrlCtrl,
+                                        decoration: InputDecoration(
+                                          hintText: 'https://example.com/cover.jpg',
+                                          hintStyle: const TextStyle(color: Colors.white38),
+                                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.white38)),
+                                          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFF0B429))),
+                                        ),
+                                        style: const TextStyle(color: Colors.white),
+                                        keyboardType: TextInputType.url,
+                                        autofocus: true,
+                                      ),
+                                      actions: [
+                                        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel', style: TextStyle(color: Colors.white70))),
+                                        ElevatedButton(
+                                          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFF0B429)),
+                                          onPressed: () {
+                                            final url = _imageUrlCtrl.text.trim();
+                                            if (url.isNotEmpty && Uri.tryParse(url)?.hasScheme == true) {
+                                              // If it's a Google Drive share link, try to convert to a direct download URL
+                                              String finalUrl = url;
+                                              bool transformedFromDrive = false;
+                                              if (url.contains('drive.google.com')) {
+                                                // Try to extract file id from common Drive URL patterns
+                                                final match = RegExp(r"/d/([a-zA-Z0-9_-]+)").firstMatch(url);
+                                                String? fileId;
+                                                if (match != null) {
+                                                  fileId = match.group(1);
+                                                } else {
+                                                  final u = Uri.tryParse(url);
+                                                  if (u != null && u.queryParameters['id'] != null) fileId = u.queryParameters['id'];
+                                                }
+                                                if (fileId != null) {
+                                                  finalUrl = 'https://drive.google.com/uc?export=download&id=$fileId';
+                                                  transformedFromDrive = true;
+                                                }
+                                              }
+
+                                              // Wrap with images.weserv.nl to add CORS-friendly headers for web
+                                              final proxied = finalUrl.contains('images.weserv.nl')
+                                                  ? finalUrl
+                                                  : 'https://images.weserv.nl/?url=${Uri.encodeComponent(finalUrl)}';
+                                              setState(() {
+                                                _customImageUrl = proxied;
+                                                _imageFile = null;
+                                                _imageBytes = null;
+                                              });
+                                              Navigator.pop(context);
+                                              if (transformedFromDrive) {
+                                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Google Drive link converted to download URL and proxied via images.weserv.nl')));
+                                              } else {
+                                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Using a proxied URL (images.weserv.nl) for web compatibility')));
+                                              }
+                                            } else {
+                                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter a valid URL')));
+                                            }
+                                          },
+                                          child: const Text('Apply'),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  icon: const Icon(Icons.link, color: Colors.cyan),
+                                  label: const Text('URL', style: TextStyle(color: Colors.cyan)),
+                                  style: OutlinedButton.styleFrom(
+                                    side: const BorderSide(color: Colors.cyan, width: 2),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                  ),
+                                ),
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: AnimatedSwitcher(
                                     duration: const Duration(milliseconds: 300),
-                                    child: (_imageBytes == null && _imageFile == null)
+                                    child: (_imageBytes == null && _imageFile == null && (_customImageUrl == null || _customImageUrl!.isEmpty))
                                         ? const Text('No photo selected', style: TextStyle(color: Colors.white60))
                                         : ClipRRect(
                                             borderRadius: BorderRadius.circular(12),
                                             child: _imageBytes != null
                                                 ? Image.memory(_imageBytes!, height: 80, fit: BoxFit.cover, errorBuilder: (ctx, err, st) => Container(width: 80, height: 80, color: Colors.grey[800]))
-                                                : Image.file(_imageFile!, height: 80, fit: BoxFit.cover, errorBuilder: (ctx, err, st) => Container(width: 80, height: 80, color: Colors.grey[800])),
+                                                : (_imageFile != null
+                                                    ? Image.file(_imageFile!, height: 80, fit: BoxFit.cover, errorBuilder: (ctx, err, st) => Container(width: 80, height: 80, color: Colors.grey[800]))
+                                                    : Image.network(
+                                                        _customImageUrl!,
+                                                        height: 80,
+                                                        fit: BoxFit.cover,
+                                                        loadingBuilder: (ctx, child, progress) => progress == null ? child : Container(width: 80, height: 80, alignment: Alignment.center, child: const CircularProgressIndicator()),
+                                                        errorBuilder: (ctx, err, st) => Container(width: 80, height: 80, color: Colors.grey[800]),
+                                                      )),
                                           ),
                                   ),
                                 ),
@@ -392,6 +488,7 @@ class _BookPreviewCard extends StatelessWidget {
   final String swapFor;
   final File? imageFile;
   final Uint8List? imageBytes;
+  final String? imageUrl;
 
   const _BookPreviewCard({
     required this.title,
@@ -400,6 +497,7 @@ class _BookPreviewCard extends StatelessWidget {
     required this.swapFor,
     this.imageFile,
     this.imageBytes,
+    this.imageUrl,
   });
 
   @override
@@ -425,12 +523,21 @@ class _BookPreviewCard extends StatelessWidget {
                       ? Image.memory(imageBytes!, width: 70, height: 90, fit: BoxFit.cover)
                       : (imageFile != null
                           ? Image.file(imageFile!, width: 70, height: 90, fit: BoxFit.cover)
-                          : Container(
-                              width: 70,
-                              height: 90,
-                              color: Colors.grey[800],
-                              child: const Icon(Icons.book, color: Colors.white70, size: 32),
-                            )),
+                          : (imageUrl != null && imageUrl!.isNotEmpty
+                              ? Image.network(
+                                  imageUrl!,
+                                  width: 70,
+                                  height: 90,
+                                  fit: BoxFit.cover,
+                                  loadingBuilder: (ctx, child, progress) => progress == null ? child : Container(width: 70, height: 90, alignment: Alignment.center, child: const CircularProgressIndicator()),
+                                  errorBuilder: (ctx, err, st) => Container(width: 70, height: 90, color: Colors.grey[800], child: const Icon(Icons.broken_image, color: Colors.white70)),
+                                )
+                              : Container(
+                                  width: 70,
+                                  height: 90,
+                                  color: Colors.grey[800],
+                                  child: const Icon(Icons.book, color: Colors.white70, size: 32),
+                                ))),
                 ),
                 const SizedBox(width: 16),
                 Expanded(

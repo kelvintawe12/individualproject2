@@ -4,13 +4,14 @@ import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/library_service.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../presentation/bloc/listing_cubit.dart';
+import '../presentation/bloc/listing_state.dart';
 import 'listing_detail_screen.dart';
 import 'browse_screen.dart';
-import 'my_listings_screen.dart'; // Assuming you have this
-import 'chats_screen.dart';     // Assuming you have this
 
 class LibraryScreen extends StatefulWidget {
-  const LibraryScreen({Key? key}) : super(key: key);
+  const LibraryScreen({super.key});
 
   @override
   State<LibraryScreen> createState() => _LibraryScreenState();
@@ -305,9 +306,7 @@ class _GlassLibraryCard extends StatefulWidget {
 }
 
 class _GlassLibraryCardState extends State<_GlassLibraryCard>
-    with AutomaticKeepAliveClientMixin {
-  bool _inLibrary = true;
-  bool _loading = false;
+  with AutomaticKeepAliveClientMixin {
 
   @override
   bool get wantKeepAlive => true;
@@ -315,7 +314,15 @@ class _GlassLibraryCardState extends State<_GlassLibraryCard>
   @override
   void initState() {
     super.initState();
-    _inLibrary = true; // Always true in library
+    // Ensure ListingCubit has initial state for this listing
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final id = widget.listing['id'] as String?;
+      if (id != null) {
+        try {
+          context.read<ListingCubit>().loadInitial(id);
+        } catch (_) {}
+      }
+    });
   }
 
   Future<void> _removeFromLibrary() async {
@@ -326,12 +333,10 @@ class _GlassLibraryCardState extends State<_GlassLibraryCard>
     if (uid == null || id == null) return;
 
     HapticFeedback.mediumImpact();
-    setState(() => _loading = true);
-
     try {
-      await LibraryService.removeFromLibrary(uid, id);
+      // Delegate removal to ListingCubit to keep state consistent
+      await context.read<ListingCubit>().toggleInLibrary(id);
       if (mounted) {
-        setState(() => _inLibrary = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Removed "$title" from library'),
@@ -339,19 +344,14 @@ class _GlassLibraryCardState extends State<_GlassLibraryCard>
             backgroundColor: Colors.red.shade600,
           ),
         );
-        // Optional: Remove card with animation
-        Future.delayed(const Duration(milliseconds: 300), () {
-          if (mounted) setState(() {});
-        });
       }
+      // Parent stream (LibraryService.listenUserLibraryListings) will update and remove this item
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to remove: $e')),
         );
       }
-    } finally {
-      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -367,111 +367,65 @@ class _GlassLibraryCardState extends State<_GlassLibraryCard>
 
     final timeAgo = timestamp != null ? _formatTimeAgo(timestamp) : 'Saved';
 
-    return Opacity(
-      opacity: _inLibrary ? 1.0 : 0.0,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        height: _inLibrary ? null : 0,
-        margin: const EdgeInsets.symmetric(vertical: 10),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(24),
-          child: BackdropFilter(
-            filter: ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-            child: Container(
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.09),
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: Colors.white.withOpacity(0.15), width: 1.5),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.2),
-                    blurRadius: 20,
-                    offset: const Offset(0, 8),
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      margin: const EdgeInsets.symmetric(vertical: 10),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: BackdropFilter(
+          filter: ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+          child: Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.09),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: Colors.white.withOpacity(0.15), width: 1.5),
+              boxShadow: [
+                BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 20, offset: const Offset(0, 8)),
+              ],
+            ),
+            child: Row(
+              children: [
+                Hero(
+                  tag: 'book_${listing['id']}',
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(14),
+                    child: imageUrl != null
+                        ? Image.network(imageUrl, width: 90, height: 130, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _placeholderCover(title))
+                        : _placeholderCover(title),
                   ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  Hero(
-                    tag: 'book_${listing['id']}',
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(14),
-                      child: imageUrl != null
-                          ? Image.network(
-                              imageUrl,
-                              width: 90,
-                              height: 130,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => _placeholderCover(title),
-                            )
-                          : _placeholderCover(title),
-                    ),
+                ),
+                const SizedBox(width: 18),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700, height: 1.2), maxLines: 2, overflow: TextOverflow.ellipsis),
+                      const SizedBox(height: 6),
+                      Text(author, style: const TextStyle(color: Colors.white70, fontSize: 14.5, fontStyle: FontStyle.italic)),
+                      const SizedBox(height: 12),
+                      Row(children: [
+                        _ConditionBadge(condition: condition),
+                        const SizedBox(width: 10),
+                        Text(timeAgo, style: const TextStyle(color: Colors.white60, fontSize: 13)),
+                      ]),
+                    ],
                   ),
-                  const SizedBox(width: 18),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          title,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                            height: 1.2,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          author,
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 14.5,
-                            fontStyle: FontStyle.italic,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            _ConditionBadge(condition: condition),
-                            const SizedBox(width: 10),
-                            Text(
-                              timeAgo,
-                              style: const TextStyle(color: Colors.white60, fontSize: 13),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  _loading
-                      ? const SizedBox(
-                          width: 28,
-                          height: 28,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.5,
-                            valueColor: AlwaysStoppedAnimation(Color(0xFFF0B429)),
-                          ),
-                        )
-                      : IconButton(
-                          icon: AnimatedSwitcher(
-                            duration: const Duration(milliseconds: 300),
-                            child: Icon(
-                              Icons.bookmark,
-                              key: const ValueKey(true),
-                              color: const Color(0xFFF0B429),
-                              size: 28,
-                            ),
-                          ),
-                          onPressed: _removeFromLibrary,
-                          tooltip: 'Remove from library',
-                        ),
-                ],
-              ),
+                ),
+                const SizedBox(width: 8),
+                Builder(builder: (context) {
+                  final id = widget.listing['id'] as String?;
+                  final listingState = (id != null) ? (context.watch<ListingCubit>().state[id] ?? const ListingState()) : const ListingState();
+                  if (listingState.libLoading) {
+                    return const SizedBox(width: 28, height: 28, child: CircularProgressIndicator(strokeWidth: 2.5, valueColor: AlwaysStoppedAnimation(Color(0xFFF0B429))));
+                  }
+                  return IconButton(
+                    icon: AnimatedSwitcher(duration: const Duration(milliseconds: 300), child: Icon(Icons.bookmark, key: const ValueKey(true), color: const Color(0xFFF0B429), size: 28)),
+                    onPressed: _removeFromLibrary,
+                    tooltip: 'Remove from library',
+                  );
+                }),
+              ],
             ),
           ),
         ),

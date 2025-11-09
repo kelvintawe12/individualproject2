@@ -4,7 +4,7 @@ import 'package:lottie/lottie.dart';
 import 'profile_screen.dart';
 import 'dart:ui' as ui;
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({Key? key}) : super(key: key);
+  const SettingsScreen({super.key});
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -168,7 +168,7 @@ class _SettingsScreenState extends State<SettingsScreen> with TickerProviderStat
 // ── Glass Card ─────────────────────────────────────
 class _GlassCard extends StatelessWidget {
   final Widget child;
-  const _GlassCard({required this.child});
+  const _GlassCard({super.key, required this.child});
 
   @override
   Widget build(BuildContext context) {
@@ -196,7 +196,7 @@ class _SwitchTile extends StatelessWidget {
   final bool value;
   final ValueChanged<bool> onChanged;
 
-  const _SwitchTile({required this.title, required this.value, required this.onChanged});
+  const _SwitchTile({super.key, required this.title, required this.value, required this.onChanged});
 
   @override
   Widget build(BuildContext context) {
@@ -290,106 +290,108 @@ class _AboutDialog extends StatelessWidget {
               ),
             ],
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // App Icon or Logo
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF0B429).withOpacity(0.1),
-                  shape: BoxShape.circle,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // App Icon or Logo
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF0B429).withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.menu_book,
+                    color: Color(0xFFF0B429),
+                    size: 32,
+                  ),
                 ),
-                child: const Icon(
-                  Icons.menu_book,
-                  color: Color(0xFFF0B429),
-                  size: 32,
-                ),
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'About BookSwap',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.5,
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Empowering Student Communities',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Color(0xFFF0B429),
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(height: 20),
-              Lottie.asset('assets/book_open.json', width: 120, height: 120),
-              const SizedBox(height: 20),
-              const Text(
-                'BookSwap is a revolutionary platform designed to help students trade textbooks effortlessly. Our mission is to make education more accessible and affordable by connecting learners worldwide.\n\n'
-                'Key Features:\n'
-                '• Seamless textbook trading\n'
-                '• Secure user authentication\n'
-                '• Real-time chat and notifications\n'
-                '• Community-driven marketplace\n\n'
-                'Join thousands of students who are already saving money and building connections through BookSwap!',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.white70,
-                  fontSize: 14,
-                  height: 1.5,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Text(
-                  'Version 0.0.1 • Built with Flutter',
+                const SizedBox(height: 16),
+                const Text(
+                  'About BookSwap',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: Colors.white60,
-                    fontSize: 12,
+                    color: Colors.white,
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Empowering Student Communities',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Color(0xFFF0B429),
+                    fontSize: 14,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Developed by BookSwap Team\n'
-                'For support: support@bookswap.com',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.white54,
-                  fontSize: 12,
-                ),
-              ),
-              const SizedBox(height: 24),
-              ElevatedButton(
-                onPressed: () => Navigator.of(context).pop(),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFF0B429),
-                  foregroundColor: Colors.black87,
-                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(25),
+                const SizedBox(height: 20),
+                Lottie.asset('assets/book_open.json', width: 120, height: 120),
+                const SizedBox(height: 20),
+                const Text(
+                  'BookSwap is a revolutionary platform designed to help students trade textbooks effortlessly. Our mission is to make education more accessible and affordable by connecting learners worldwide.\n\n'
+                  'Key Features:\n'
+                  '• Seamless textbook trading\n'
+                  '• Secure user authentication\n'
+                  '• Real-time chat and notifications\n'
+                  '• Community-driven marketplace\n\n'
+                  'Join thousands of students who are already saving money and building connections through BookSwap!',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 14,
+                    height: 1.5,
                   ),
-                  elevation: 0,
                 ),
-                child: const Text(
-                  'Close',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Text(
+                    'Version 0.0.1 • Built with Flutter',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white60,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 8),
+                const Text(
+                  'Developed by BookSwap Team\n'
+                  'For support: support@bookswap.com',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white54,
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFF0B429),
+                    foregroundColor: Colors.black87,
+                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(25),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: const Text(
+                    'Close',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'presentation/bloc/app_cubit.dart';
+import 'presentation/bloc/listing_cubit.dart';
 import 'screens/browse_screen.dart' hide StreamBuilder;
 import 'screens/my_listings_screen.dart';
 import 'screens/chats_screen.dart';
@@ -9,15 +12,8 @@ import 'screens/auth/sign_in_screen.dart';
 import 'screens/library_screen.dart';
 import 'screens/notifications_screen.dart';
 
-class BookSwapApp extends StatefulWidget {
-  const BookSwapApp({Key? key}) : super(key: key);
-
-  @override
-  State<BookSwapApp> createState() => _BookSwapAppState();
-}
-
-class _BookSwapAppState extends State<BookSwapApp> {
-  int _selectedIndex = 0;
+class BookSwapApp extends StatelessWidget {
+  const BookSwapApp({super.key});
 
   static final List<Widget> _screens = <Widget>[
     const ListingsScreen(),
@@ -27,15 +23,16 @@ class _BookSwapAppState extends State<BookSwapApp> {
     const SettingsScreen(),
   ];
 
-  void _onItemTapped(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    // Provide AppCubit above the MaterialApp so routes and the whole app
+    // can read and modify the selected index without calling setState.
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider(create: (_) => AppCubit()),
+        BlocProvider(create: (_) => ListingCubit()),
+      ],
+      child: MaterialApp(
       title: 'BookSwap',
       theme: ThemeData(
         primaryColor: const Color(0xFF0F1724),
@@ -61,7 +58,7 @@ class _BookSwapAppState extends State<BookSwapApp> {
         '/post': (context) => const PostScreen(),
         '/browse': (context) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            setState(() => _selectedIndex = 0); // Browse slot
+            context.read<AppCubit>().goToBrowse();
             Navigator.of(context).pop();
           });
           return const SizedBox.shrink();
@@ -73,7 +70,7 @@ class _BookSwapAppState extends State<BookSwapApp> {
         // in the app shell (IndexedStack).
         '/library': (context) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            setState(() => _selectedIndex = 1); // My Listings / Library slot
+            context.read<AppCubit>().goToLibrary();
             Navigator.of(context).pop();
           });
           return const SizedBox.shrink();
@@ -81,7 +78,7 @@ class _BookSwapAppState extends State<BookSwapApp> {
         '/notifications': (context) => const NotificationsScreen(),
         '/chats': (context) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            setState(() => _selectedIndex = 2); // Chats tab
+            context.read<AppCubit>().goToChats();
             Navigator.of(context).pop();
           });
           return const SizedBox.shrink();
@@ -102,9 +99,15 @@ class _BookSwapAppState extends State<BookSwapApp> {
             // Use IndexedStack to preserve each tab's state (scroll position,
             // animation controllers, etc.) when switching tabs.
             body: SafeArea(
-              child: IndexedStack(
-                index: _selectedIndex,
-                children: _screens,
+              // Listen to AppCubit for the current selected index and update
+              // the IndexedStack index accordingly.
+              child: BlocBuilder<AppCubit, int>(
+                builder: (context, selectedIndex) {
+                  return IndexedStack(
+                    index: selectedIndex,
+                    children: _screens,
+                  );
+                },
               ),
             ),
             // Wrap the BottomNavigationBar in a single SafeArea (top:false)
@@ -114,27 +117,32 @@ class _BookSwapAppState extends State<BookSwapApp> {
               top: false,
               child: Container(
                 color: const Color(0xFF0F1724),
-                child: BottomNavigationBar(
-                  type: BottomNavigationBarType.fixed,
-                  backgroundColor: Colors.transparent,
-                  elevation: 0,
-                  currentIndex: _selectedIndex,
-                  onTap: _onItemTapped,
-                  selectedItemColor: const Color(0xFFF0B429),
-                  unselectedItemColor: Colors.white38,
-                  items: const [
-                    BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Browse'),
-                    BottomNavigationBarItem(icon: Icon(Icons.library_books), label: 'My Listings'),
-                    BottomNavigationBarItem(icon: Icon(Icons.chat), label: 'Chats'),
-                    BottomNavigationBarItem(icon: Icon(Icons.notifications), label: 'Notifications'),
-                    BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Settings'),
-                  ],
+                child: BlocBuilder<AppCubit, int>(
+                  builder: (context, selectedIndex) {
+                    return BottomNavigationBar(
+                      type: BottomNavigationBarType.fixed,
+                      backgroundColor: Colors.transparent,
+                      elevation: 0,
+                      currentIndex: selectedIndex,
+                      onTap: (i) => context.read<AppCubit>().setIndex(i),
+                      selectedItemColor: const Color(0xFFF0B429),
+                      unselectedItemColor: Colors.white38,
+                      items: const [
+                        BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Browse'),
+                        BottomNavigationBarItem(icon: Icon(Icons.library_books), label: 'My Listings'),
+                        BottomNavigationBarItem(icon: Icon(Icons.chat), label: 'Chats'),
+                        BottomNavigationBarItem(icon: Icon(Icons.notifications), label: 'Notifications'),
+                        BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Settings'),
+                      ],
+                    );
+                  },
                 ),
               ),
             ),
           );
         },
       ),
-    );
-  }
+    ),
+  );
+}
 }
