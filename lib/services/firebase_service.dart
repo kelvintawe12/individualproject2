@@ -776,11 +776,22 @@ class FirebaseService {
         'lastMessage': (t.isNotEmpty ? t : (i.isNotEmpty ? '[image]' : '')),
         'lastSentAt': FieldValue.serverTimestamp(),
       };
-      batch.update(chatRef, updatePayload);
+
+      // Enhanced debug: print current auth uid (helps diagnose permission-denied)
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (kDebugMode) debugPrint('[FirebaseService] sendMessage currentUser.uid=${currentUser?.uid ?? 'null'}');
+
+      // Sanitize payloads to ensure only Firestore-serializable types are sent
+      final sanitizedMessage = _sanitizeForFirestore(payload);
+      final sanitizedUpdate = _sanitizeForFirestore(updatePayload);
+
+      batch.update(chatRef, sanitizedUpdate);
       if (kDebugMode) {
         debugPrint('[FirebaseService] sendMessage preparing batch commit for chatId=$chatId senderId=$senderId');
-        debugPrint('[FirebaseService] sendMessage messagePayload=$payload');
-        debugPrint('[FirebaseService] sendMessage chatUpdatePayload=$updatePayload');
+        debugPrint('[FirebaseService] sendMessage originalMessagePayload=$payload');
+        debugPrint('[FirebaseService] sendMessage sanitizedMessagePayload=$sanitizedMessage');
+        debugPrint('[FirebaseService] sendMessage originalChatUpdatePayload=$updatePayload');
+        debugPrint('[FirebaseService] sendMessage sanitizedChatUpdatePayload=$sanitizedUpdate');
       }
       await batch.commit();
     } on FirebaseException catch (fe) {
@@ -954,5 +965,40 @@ class FirebaseService {
     if (queryDesc != null) sb.writeln('query: $queryDesc');
     if (error != null) sb.writeln('error: $error');
     return sb.toString();
+  }
+
+  /// Sanitize a value (or map) so it only contains Firestore-serializable
+  /// primitives (strings, numbers, booleans, null), FieldValue tokens, lists
+  /// and maps. This helps avoid webchannel 400 errors caused by unsupported
+  /// runtime types being sent inside batched writes.
+  static dynamic _sanitizeForFirestore(dynamic value) {
+    try {
+      if (value == null) return null;
+      // FieldValue (server timestamp, arrayUnion, etc) are allowed as-is.
+      if (value is FieldValue) return value;
+      if (value is String || value is num || value is bool) return value;
+      if (value is Timestamp) return value;
+      if (value is List) {
+        return value.map((e) => _sanitizeForFirestore(e)).toList();
+      }
+      if (value is Map) {
+        final out = <String, dynamic>{};
+        (value as Map).forEach((k, v) {
+          try {
+            final key = k.toString();
+            out[key] = _sanitizeForFirestore(v);
+          } catch (_) {
+            // Convert problematic keys/values to strings to keep payload valid
+            out[k.toString()] = v?.toString();
+          }
+        });
+        return out;
+      }
+      // Fallback: convert unknown types to string to avoid invalid payload types.
+      return value.toString();
+    } catch (e) {
+      if (kDebugMode) debugPrint('[FirebaseService] _sanitizeForFirestore error: $e');
+      return value?.toString();
+    }
   }
 }
